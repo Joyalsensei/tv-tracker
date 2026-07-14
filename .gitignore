@@ -1,0 +1,48 @@
+# ── Environment ──
+.env
+.env.example
+*.env
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.so
+
+# ── Virtual Environment ──
+venv/
+.venv/
+env/
+
+# ── IDE/Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-*
+*.sublime-workspace
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+*.log
+
+# ── Database ──
+*.db
+*.db.backup.*
+*.sqlite
+*.sqlite3
+
+# ── Flask ──
+instance/
+
+# ── Project specifics ──
+tracker.db
+tracker.db.backup.*

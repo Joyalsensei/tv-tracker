@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign Up - TV Tracker</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #141414;
+            color: #eee;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        a { color: #66d9ef; text-decoration: none; }
+        a:hover { color: #fff; }
+        input, button { padding: 8px 14px; font-size: 15px; border-radius: 6px; border: none; outline: none; }
+        button { background: #e50914; color: white; cursor: pointer; transition: background .2s, transform .15s; }
+        button:hover { background: #f40612; transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+
+        /* ── Navigation Bar ── */
+        .navbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 40px; background: linear-gradient(180deg, rgba(0,0,0,.8) 0%, transparent 100%);
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+        }
+        .navbar .logo { font-size: 24px; font-weight: 800; color: #e50914; letter-spacing: -1px; }
+        .navbar .nav-links { display: flex; gap: 20px; align-items: center; }
+        .navbar .nav-links a { color: #ccc; font-size: 14px; transition: color .2s; }
+        .navbar .nav-links a:hover { color: #fff; }
+
+        /* ── Auth Container ── */
+        .auth-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 100px 20px 40px;
+        }
+        .auth-card {
+            background: rgba(0,0,0,.75);
+            border-radius: 12px;
+            padding: 48px 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.5);
+        }
+        .auth-card h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .auth-card .subtitle {
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+            margin-bottom: 28px;
+        }
+        .auth-form { display: flex; flex-direction: column; gap: 16px; }
+        .auth-form .form-group { display: flex; flex-direction: column; gap: 4px; }
+        .auth-form .form-group label {
+            font-size: 13px;
+            color: #aaa;
+            font-weight: 500;
+        }
+        .auth-form input[type="text"],
+        .auth-form input[type="password"] {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 15px;
+            background: rgba(255,255,255,.08);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,.15);
+            border-radius: 6px;
+            transition: border .2s, background .2s;
+        }
+        .auth-form input:focus {
+            border-color: #e50914;
+            background: rgba(255,255,255,.12);
+        }
+        .auth-form input::placeholder { color: #666; }
+        .auth-form input.error { border-color: #e74c3c; }
+        .auth-form button[type="submit"] {
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+        .auth-card .auth-footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 14px;
+            color: #888;
+        }
+        .auth-card .auth-footer a {
+            color: #fff;
+            font-weight: 600;
+        }
+        .auth-card .auth-footer a:hover { text-decoration: underline; }
+
+        /* ── Flash messages ── */
+        .flash { max-width: 600px; margin: 80px auto 10px; padding: 12px 20px; border-radius: 6px; font-size: 14px; text-align: center; }
+        .flash.error { background: #e74c3c; color: white; }
+        .flash.success { background: #2ecc71; color: white; }
+        .flash.info { background: #3498db; color: white; }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .navbar { padding: 12px 16px; }
+            .auth-card { padding: 32px 24px; }
+            .auth-card h1 { font-size: 26px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ─── Navigation ─── -->
+<nav class="navbar">
+    <a href="/" class="logo">TV Tracker</a>
+    <div class="nav-links">
+        <a href="/login">Login</a>
+    </div>
+</nav>
+
+<!-- ─── Flash Messages ─── -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+    {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+{% endif %}
+{% endwith %}
+
+<!-- ─── Auth Card ─── -->
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <h1>Create Account</h1>
+        <p class="subtitle">Start tracking your favorite shows and movies</p>
+        <form method="POST" class="auth-form">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Choose a username" value="{{ username or '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="At least 6 characters" required>
+            </div>
+            <div class="form-group">
+                <label for="password_confirm">Confirm Password</label>
+                <input type="password" id="password_confirm" name="password_confirm" placeholder="Re-enter your password" required>
+            </div>
+            <button type="submit">Create Account</button>
+        </form>
+        <p class="auth-footer">Already have an account? <a href="/login">Log in</a></p>
+    </div>
+</div>
+
+</body>
+</html>

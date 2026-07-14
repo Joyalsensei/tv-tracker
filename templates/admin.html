@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin Dashboard - TV Tracker</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #141414;
+            color: #eee;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 30px 40px;
+        }
+        a { color: #66d9ef; text-decoration: none; }
+        h1 { font-size: 28px; margin-bottom: 4px; }
+        .sub-nav { color: #999; font-size: 14px; margin-bottom: 24px; display: flex; gap: 16px; }
+        .sub-nav a:hover { color: #fff; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: #1a1a1a;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #2a2a2a;
+        }
+        .stat-card .stat-number {
+            font-size: 36px;
+            font-weight: 800;
+            color: #e50914;
+        }
+        .stat-card .stat-label {
+            font-size: 13px;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+        .section h2 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        th { color: #999; font-weight: 600; font-size: 12px; text-transform: uppercase; }
+        td { color: #ccc; }
+
+        .admin-badge {
+            display: inline-block;
+            background: #e50914;
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>⚙️ Admin Dashboard <span class="admin-badge">Only You</span></h1>
+    <div class="sub-nav">
+        <a href="/">Home</a>
+        <a href="/myshows">My Shows</a>
+        <a href="/mymovies">My Movies</a>
+        <a href="/history">History</a>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ total_users }}</div>
+            <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_shows }}</div>
+            <div class="stat-label">Total Items Added</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_tv }}</div>
+            <div class="stat-label">TV Shows</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_movies }}</div>
+            <div class="stat-label">Movies</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_watched_eps }}</div>
+            <div class="stat-label">Episodes Watched</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ total_watched_movies }}</div>
+            <div class="stat-label">Movies Watched</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📝 Recent Signups</h2>
+        <table>
+            <tr>
+                <th>User ID</th>
+                <th>Username</th>
+            </tr>
+            {% for user in recent_users %}
+            <tr>
+                <td>{{ user[0] }}</td>
+                <td>{{ user[1] }}</td>
+            </tr>
+            {% endfor %}
+            {% if not recent_users %}
+            <tr><td colspan="2" style="color:#666;">No users yet</td></tr>
+            {% endif %}
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>📊 Top Contributors</h2>
+        <table>
+            <tr>
+                <th>Username</th>
+                <th>Items Added</th>
+            </tr>
+            {% for row in user_activity %}
+            <tr>
+                <td>{{ row[0] }}</td>
+                <td>{{ row[1] }}</td>
+            </tr>
+            {% endfor %}
+            {% if not user_activity %}
+            <tr><td colspan="2" style="color:#666;">No data yet</td></tr>
+            {% endif %}
+        </table>
+    </div>
+
+    <p style="color:#555;font-size:12px;margin-top:40px;text-align:center;">
+        Only the first registered user (you) can see this page.
+    </p>
+</body>
+</html>

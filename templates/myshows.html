@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Shows - TV Tracker</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #141414;
+            color: #eee;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            padding: 30px;
+        }
+        a { color: #66d9ef; text-decoration: none; }
+        input, button { padding: 8px; font-size: 15px; border-radius: 6px; border: none; }
+        button { background: #e50914; color: white; cursor: pointer; transition: background .2s; }
+        button:hover { background: #f40612; }
+
+        h1 { font-size: 28px; margin-bottom: 4px; }
+        .sub-nav { color: #999; font-size: 14px; margin-bottom: 20px; display: flex; gap: 16px; }
+        .sub-nav a:hover { color: #fff; }
+
+        .show-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            list-style: none;
+            padding: 0;
+        }
+        .show-card {
+            width: 150px;
+            text-align: center;
+            transition: transform .2s;
+        }
+        .show-card:hover { transform: scale(1.05); }
+        .show-card img {
+            width: 100%;
+            border-radius: 8px;
+            aspect-ratio: 2/3;
+            object-fit: cover;
+        }
+        .show-card .card-title {
+            margin-top: 6px;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .show-card .card-rating {
+            font-size: 12px;
+            color: #f5c518;
+        }
+        .progress-bg {
+            background: #333;
+            border-radius: 4px;
+            height: 6px;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background: #f5c518;
+            height: 100%;
+            transition: width .5s ease;
+        }
+        .progress-text {
+            font-size: 11px;
+            color: #999;
+            margin-top: 2px;
+        }
+        .remove-link {
+            display: block;
+            margin-top: 4px;
+            font-size: 11px;
+            color: #ff6b6b;
+            background: none !important;
+            border: none !important;
+            padding: 0 !important;
+            cursor: pointer;
+        }
+        .remove-link:hover { text-decoration: underline; }
+        h2 {
+            margin-top: 30px;
+            margin-bottom: 10px;
+            color: #eee;
+            font-size: 20px;
+        }
+        .empty-state {
+            color: #999;
+            margin-top: 20px;
+        }
+        @media (max-width: 600px) {
+            .show-card { width: 120px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>📺 My Shows</h1>
+    <div class="sub-nav">
+        <a href="/">Home</a>
+        <a href="/mymovies">My Movies</a>
+        <a href="/history">History</a>
+    </div>
+
+    {% if shows %}
+    <h2>▶️ In Progress</h2>
+    <ul class="show-grid">
+    {% for show in shows %}
+        <li class="show-card">
+            <a href="/show/{{ show[0] }}">
+                {% if show[2] %}
+                <img src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
+                {% else %}
+                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#666;">No Poster</div>
+                {% endif %}
+            </a>
+            <p class="card-title">{{ show[1] }}</p>
+            <span class="card-rating">★ {{ "%.1f"|format(show[8]|float) if show[8] else "N/A" }}</span>
+            <div class="progress-bg">
+                <div class="progress-fill" style="width: {{ show[7] }}%;"></div>
+            </div>
+            <p class="progress-text">{{ show[5] }}/{{ show[6] }} episodes</p>
+            <form method="POST" action="/remove/{{ show[0] }}" style="display:inline;" onsubmit="return confirm('Remove this show?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="remove-link">Remove</button>
+            </form>
+        </li>
+    {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if completed %}
+    <h2>✅ Completed</h2>
+    <ul class="show-grid">
+    {% for show in completed %}
+        <li class="show-card">
+            <a href="/show/{{ show[0] }}">
+                {% if show[2] %}
+                <img src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
+                {% else %}
+                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#666;">No Poster</div>
+                {% endif %}
+            </a>
+            <p class="card-title">{{ show[1] }}</p>
+            <span class="card-rating">★ {{ "%.1f"|format(show[8]|float) if show[8] else "N/A" }}</span>
+            <div class="progress-bg">
+                <div class="progress-fill" style="width: {{ show[7] }}%;"></div>
+            </div>
+            <p class="progress-text">{{ show[5] }}/{{ show[6] }} episodes</p>
+            <form method="POST" action="/remove/{{ show[0] }}" style="display:inline;" onsubmit="return confirm('Remove this show?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="remove-link">Remove</button>
+            </form>
+        </li>
+    {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if not shows and not completed %}
+    <p class="empty-state">No shows yet. <a href="/">Search and add some!</a></p>
+    {% endif %}
+</body>
+</html>
