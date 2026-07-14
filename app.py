@@ -4,10 +4,16 @@ import os
 import time
 import secrets
 import sys
+import logging
+import traceback
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from pathlib import Path
+
+# Log ALL errors to stdout so we can see them in Render logs
+logging.basicConfig(level=logging.ERROR, stream=sys.stdout, force=True)
+logger = logging.getLogger(__name__)
 
 from database import init_db, get_conn, use_pg, exe, exemany, lastrowid
 
@@ -25,6 +31,13 @@ if not API_KEY:
         "TMDB_API_KEY is required. "
         "Copy .env.example to .env and set TMDB_API_KEY to your TMDB API key."
     )
+
+# Log all 500 errors with full traceback to Render logs
+@app.errorhandler(500)
+def handle_500(error):
+    logger.error(f"500 ERROR: {error}")
+    logger.error(traceback.format_exc())
+    return "Internal Server Error", 500
 
 # Session cookie security
 app.config.update(
@@ -241,21 +254,27 @@ def signup():
 
         password_hash = generate_password_hash(password)
 
-        conn = get_conn()
         try:
-            cursor = conn.cursor()
-            id_suffix = " RETURNING id" if use_pg() else ""
-            exe(cursor,
-                f'INSERT INTO users (username, password_hash) VALUES (?, ?){id_suffix}',
-                (username, password_hash))
-            conn.commit()
-            session['user_id'] = lastrowid(cursor)
-            return redirect('/myshows')
-        except Exception:
-            flash("Username already taken.", "error")
+            conn = get_conn()
+            try:
+                cursor = conn.cursor()
+                id_suffix = " RETURNING id" if use_pg() else ""
+                exe(cursor,
+                    f'INSERT INTO users (username, password_hash) VALUES (?, ?){id_suffix}',
+                    (username, password_hash))
+                conn.commit()
+                session['user_id'] = lastrowid(cursor)
+                return redirect('/myshows')
+            except Exception:
+                flash("Username already taken.", "error")
+                return render_template('signup.html', username=username)
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.error(f"SIGNUP ERROR: {e}")
+            logger.error(traceback.format_exc())
+            flash("An error occurred. Please try again.", "error")
             return render_template('signup.html', username=username)
-        finally:
-            conn.close()
 
     return render_template('signup.html')
 
@@ -270,19 +289,25 @@ def login():
             flash("Username and password required.", "error")
             return redirect('/login')
 
-        conn = get_conn()
         try:
-            cursor = conn.cursor()
-            exe(cursor, 'SELECT id, password_hash FROM users WHERE username=?', (username,))
-            user = cursor.fetchone()
-        finally:
-            conn.close()
+            conn = get_conn()
+            try:
+                cursor = conn.cursor()
+                exe(cursor, 'SELECT id, password_hash FROM users WHERE username=?', (username,))
+                user = cursor.fetchone()
+            finally:
+                conn.close()
 
-        if user and check_password_hash(user[1], password):
-            session['user_id'] = user[0]
-            return redirect('/myshows')
-        else:
-            flash("Invalid username or password.", "error")
+            if user and check_password_hash(user[1], password):
+                session['user_id'] = user[0]
+                return redirect('/myshows')
+            else:
+                flash("Invalid username or password.", "error")
+                return redirect('/login')
+        except Exception as e:
+            logger.error(f"LOGIN ERROR: {e}")
+            logger.error(traceback.format_exc())
+            flash("An error occurred. Please try again.", "error")
             return redirect('/login')
 
     return render_template('login.html')
