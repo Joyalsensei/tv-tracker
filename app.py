@@ -3,6 +3,7 @@ import requests
 import os
 import time
 import secrets
+import sys
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -100,8 +101,14 @@ def validate_csrf_token(token):
 
 app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
-# Initialize database on startup
-init_db(DATABASE_PATH)
+# Initialize database on startup (fail gracefully on Render if DB is down)
+print("Connecting to database...")
+try:
+    init_db(DATABASE_PATH)
+    print("Database connected successfully!")
+except Exception as e:
+    print(f"WARNING: Database init failed: {e}", file=sys.stderr)
+    print("App will start but database-dependent features may not work.", file=sys.stderr)
 
 
 def login_required(f):
@@ -203,6 +210,12 @@ def home():
         popular_movies=(popular_movies or {}).get("results", [])[:12],
         genre_shelves=genre_shelves,
     )
+
+
+# ── Health check endpoint (Render friendly) ────────────────────────────
+@app.route('/health')
+def health():
+    return jsonify({"status": "ok"}), 200
 
 
 # ═══════════════════════════════════════════════════════════════════
