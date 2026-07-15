@@ -10,6 +10,7 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from pathlib import Path
+from markupsafe import escape
 
 # Log ALL errors to stdout so we can see them in Render logs
 logging.basicConfig(level=logging.ERROR, stream=sys.stdout, force=True)
@@ -236,47 +237,48 @@ def health():
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
+    if request.method == 'GET':
+        return render_template('signup.html')
 
-        if not username or not password:
-            flash("Username and password required.", "error")
-            return render_template('signup.html', username=username)
-        if len(password) < 6:
-            flash("Password must be at least 6 characters.", "error")
-            return render_template('signup.html', username=username)
+    # POST handling
+    username = request.form.get('username', '').strip()
+    password = request.form.get('password', '')
 
-        password_confirm = request.form.get('password_confirm', '')
-        if password != password_confirm:
-            flash("Passwords do not match.", "error")
-            return render_template('signup.html', username=username)
+    if not username or not password:
+        flash("Username and password required.", "error")
+        return render_template('signup.html', username=username)
+    if len(password) < 6:
+        flash("Password must be at least 6 characters.", "error")
+        return render_template('signup.html', username=username)
 
-        password_hash = generate_password_hash(password)
+    password_confirm = request.form.get('password_confirm', '')
+    if password != password_confirm:
+        flash("Passwords do not match.", "error")
+        return render_template('signup.html', username=username)
 
+    password_hash = generate_password_hash(password)
+
+    try:
+        conn = get_conn()
         try:
-            conn = get_conn()
-            try:
-                cursor = conn.cursor()
-                id_suffix = " RETURNING id" if use_pg() else ""
-                exe(cursor,
-                    f'INSERT INTO users (username, password_hash) VALUES (?, ?){id_suffix}',
-                    (username, password_hash))
-                conn.commit()
-                session['user_id'] = lastrowid(cursor)
-                return redirect('/myshows')
-            except Exception:
-                flash("Username already taken.", "error")
-                return render_template('signup.html', username=username)
-            finally:
-                conn.close()
-        except Exception as e:
-            logger.error(f"SIGNUP ERROR: {e}")
-            logger.error(traceback.format_exc())
-            flash("An error occurred. Please try again.", "error")
+            cursor = conn.cursor()
+            id_suffix = " RETURNING id" if use_pg() else ""
+            exe(cursor,
+                f'INSERT INTO users (username, password_hash) VALUES (?, ?){id_suffix}',
+                (username, password_hash))
+            conn.commit()
+            session['user_id'] = lastrowid(cursor)
+            return redirect('/myshows')
+        except Exception:
+            flash("Username already taken.", "error")
             return render_template('signup.html', username=username)
-
-    return render_template('signup.html')
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"SIGNUP ERROR: {e}")
+        logger.error(traceback.format_exc())
+        flash("An error occurred. Please try again.", "error")
+        return render_template('signup.html', username=username)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -361,14 +363,14 @@ def add_show(show_id):
         cursor = conn.cursor()
         exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (show["id"], session['user_id']))
         if cursor.fetchone():
-            flash(f"{show['name']} is already in your shows.", "info")
+            flash(f"{escape(show['name'])} is already in your shows.", "info")
         else:
             exe(cursor, '''
                 INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id']))
             conn.commit()
-            flash(f"Added {show['name']}!", "success")
+            flash(f"Added {escape(show['name'])}!", "success")
     finally:
         conn.close()
 
@@ -391,14 +393,14 @@ def add_movie(movie_id):
         cursor = conn.cursor()
         exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (movie["id"], session['user_id']))
         if cursor.fetchone():
-            flash(f"{movie['title']} is already in your movies.", "info")
+            flash(f"{escape(movie['title'])} is already in your movies.", "info")
         else:
             exe(cursor, '''
                 INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id)
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (movie["id"], movie["title"], movie["poster_path"], "Movie", movie.get("release_date", ""), session['user_id']))
             conn.commit()
-            flash(f"Added {movie['title']} to My Movies!", "success")
+            flash(f"Added {escape(movie['title'])} to My Movies!", "success")
     finally:
         conn.close()
 
@@ -416,7 +418,7 @@ def my_shows():
         cursor = conn.cursor()
         exe(cursor, '''
             SELECT tmdb_id, name, poster_path, status, first_air_date 
-            FROM shows WHERE user_id=? AND status != "Movie"
+            FROM shows WHERE user_id=? AND status != 'Movie'
         ''', (session['user_id'],))
         shows = cursor.fetchall()
 
@@ -455,7 +457,7 @@ def my_movies():
         cursor = conn.cursor()
         exe(cursor, '''
             SELECT tmdb_id, name, poster_path, status, first_air_date 
-            FROM shows WHERE user_id=? AND status = "Movie"
+            FROM shows WHERE user_id=? AND status = 'Movie'
         ''', (session['user_id'],))
         movies = cursor.fetchall()
 
@@ -463,14 +465,7 @@ def my_movies():
         for movie in movies:
             exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie[0], session['user_id']))
             watched = cursor.fetchone() is not None
-
-            movie_data = tmdb_get(
-                f"https://api.themoviedb.org/3/movie/{movie[0]}",
-                {"api_key": API_KEY}
-            )
-            rating = movie_data.get("vote_average", 0) if movie_data else 0
-
-            movies_with_status.append(movie + (watched, rating))
+            movies_with_status.append(movie + (watched, 0))
     finally:
         conn.close()
 
@@ -699,6 +694,8 @@ def mark_season_watched(show_id, season_number, up_to_episode):
 @login_required
 def mark_previous_seasons(show_id, season_number):
     """Mark all episodes from all seasons BEFORE the given season as watched."""
+    if not validate_csrf_token(request.form.get('_csrf_token')):
+        abort(403)
     user_id = session['user_id']
     show_data = tmdb_get(
         f"https://api.themoviedb.org/3/tv/{show_id}",
@@ -816,21 +813,17 @@ def history():
         ''', (user_id,))
         watched_movies = cursor.fetchall()
 
-        # Completed shows (100% watched)
+        # All user's shows (TV only, not movies)
         exe(cursor, '''
             SELECT tmdb_id, name, poster_path, status, first_air_date
-            FROM shows WHERE user_id=? AND status != "Movie"
+            FROM shows WHERE user_id=? AND status != 'Movie'
         ''', (user_id,))
         all_shows = cursor.fetchall()
-    finally:
-        conn.close()
 
-    completed_shows = []
-    for row in all_shows:
-        show_id = row[0]
-        conn = get_conn()
-        try:
-            cursor = conn.cursor()
+        # Completed shows — reuse the same connection, no N+1
+        completed_shows = []
+        for row in all_shows:
+            show_id = row[0]
             exe(cursor, '''
                 SELECT COUNT(*) FROM watched_episodes
                 WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
@@ -844,54 +837,44 @@ def history():
             ''', (show_id, user_id))
             latest_row = cursor.fetchone()
             completed_at = latest_row[0] if latest_row else None
-        finally:
-            conn.close()
 
-        total_episodes, show_data = get_show_episode_count(show_id)
-        if total_episodes > 0 and watched_count >= total_episodes:
-            rating = show_data.get("vote_average", 0) if show_data else 0
-            completed_shows.append(row + (completed_at, rating))
+            total_episodes, _ = get_show_episode_count(show_id)
+            if total_episodes > 0 and watched_count >= total_episodes:
+                completed_shows.append(row + (completed_at, 0))
 
-    completed_shows.sort(key=lambda s: s[5] or "", reverse=True)
+        completed_shows.sort(key=lambda s: s[5] or "", reverse=True)
 
-    # Build merged timeline (newest first)
-    timeline = []
-    for movie in watched_movies:
-        timeline.append({
-            "type": "movie",
-            "tmdb_id": movie[0],
-            "name": movie[1],
-            "poster_path": movie[2],
-            "date": movie[3],
-        })
-    for show in completed_shows:
-        timeline.append({
-            "type": "show",
-            "tmdb_id": show[0],
-            "name": show[1],
-            "poster_path": show[2],
-            "date": show[6],
-        })
-    timeline.sort(key=lambda x: x["date"] or "", reverse=True)
+        # Build merged timeline (newest first) — no per-item API calls
+        timeline = []
+        for movie in watched_movies:
+            timeline.append({
+                "type": "movie",
+                "tmdb_id": movie[0],
+                "name": movie[1],
+                "poster_path": movie[2],
+                "date": movie[3],
+                "rating": 0,
+            })
+        for show in completed_shows:
+            timeline.append({
+                "type": "show",
+                "tmdb_id": show[0],
+                "name": show[1],
+                "poster_path": show[2],
+                "date": show[5],
+                "rating": 0,
+            })
+        timeline.sort(key=lambda x: x["date"] or "", reverse=True)
 
-    def get_rating(tmdb_id, media_type):
-        if media_type == "movie":
-            data = tmdb_get(f"https://api.themoviedb.org/3/movie/{tmdb_id}", {"api_key": API_KEY})
-        else:
-            data = tmdb_get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", {"api_key": API_KEY})
-        return round(data.get("vote_average", 0), 1) if data else 0
+        watched_movies_simple = [(m[0], m[1], m[2], m[3], 0) for m in watched_movies]
 
-    for item in timeline[:20]:
-        item["rating"] = get_rating(item["tmdb_id"], item["type"])
-
-    watched_movies_with_ratings = []
-    for movie in watched_movies:
-        watched_movies_with_ratings.append(movie + (get_rating(movie[0], "movie"),))
+    finally:
+        conn.close()
 
     return render_template(
         'history.html',
         timeline=timeline,
-        watched_movies=watched_movies_with_ratings,
+        watched_movies=watched_movies_simple,
         completed_shows=completed_shows,
     )
 
@@ -928,11 +911,11 @@ def admin_dashboard():
         total_shows = cursor.fetchone()[0]
 
         # Total movies
-        exe(cursor, 'SELECT COUNT(*) FROM shows WHERE status = "Movie"')
+        exe(cursor, "SELECT COUNT(*) FROM shows WHERE status = 'Movie'")
         total_movies = cursor.fetchone()[0]
 
         # Total TV shows
-        exe(cursor, 'SELECT COUNT(*) FROM shows WHERE status != "Movie"')
+        exe(cursor, "SELECT COUNT(*) FROM shows WHERE status != 'Movie'")
         total_tv = cursor.fetchone()[0]
 
         # Total watched episodes

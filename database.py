@@ -1,4 +1,5 @@
 import os
+import re
 import psycopg2
 import sqlite3
 from pathlib import Path
@@ -20,19 +21,44 @@ def use_pg():
     return DATABASE_URL is not None
 
 
+# ── Table-aware ON CONFLICT targets for PostgreSQL ────────────────
+_CONFLICT_TARGETS = {
+    'shows': 'ON CONFLICT (tmdb_id, user_id) DO NOTHING',
+    'watched_episodes': 'ON CONFLICT (show_tmdb_id, season_number, episode_number, user_id) DO NOTHING',
+    'watched_movies': 'ON CONFLICT (movie_tmdb_id, user_id) DO NOTHING',
+    'favorites': 'ON CONFLICT (show_tmdb_id, user_id) DO NOTHING',
+    'users': 'ON CONFLICT (username) DO NOTHING',
+}
+
+
 def _adapt(sql):
     """Adapt SQLite SQL syntax to PostgreSQL syntax when needed."""
     if not use_pg():
         return sql
     s = sql.replace('?', '%s')
     if 'INSERT OR IGNORE' in s:
-        # SQLite: INSERT OR IGNORE INTO ... VALUES (...)
-        # PG:     INSERT INTO ... VALUES (...) ON CONFLICT DO NOTHING
         s = s.replace('INSERT OR IGNORE', 'INSERT')
-        s = s.rstrip().rstrip(';') + ' ON CONFLICT DO NOTHING'
+        s = s.rstrip().rstrip(';')
+        # Parse table name to pick the correct conflict target
+        match = re.match(r'INSERT\s+INTO\s+(\w+)', s, re.IGNORECASE)
+        if match:
+            table = match.group(1).lower()
+            conflict = _CONFLICT_TARGETS.get(table, 'ON CONFLICT DO NOTHING')
+            s += ' ' + conflict
+        else:
+            s += ' ON CONFLICT DO NOTHING'
         if sql.strip().endswith(';'):
             s += ';'
     return s
+
+
+def order_nulls_last(column):
+    """Return ORDER BY with NULLS LAST for PostgreSQL, plain for SQLite.
+    Use like: f"ORDER BY {order_nulls_last('column_name')} DESC"
+    """
+    if use_pg():
+        return f'{column} NULLS LAST'
+    return column
 
 
 def exe(cursor, sql, params=None):
