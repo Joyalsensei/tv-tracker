@@ -43,19 +43,25 @@ class _PgConnection:
 
 
 def _get_pg_conn():
-    """Get or reuse a PostgreSQL connection with health check.
+    """Get or reuse a PostgreSQL connection with health check and auto-reconnect.
     Returns a _PgConnection wrapper that makes close() a no-op.
     """
     global _pg_conn, _pg_conn_ts
 
-    # Check if existing connection is still alive and within TTL
     now = time.time()
+
+    # If we have a cached connection that's within TTL, use it directly (no health check per request)
     if _pg_conn is not None and (now - _pg_conn_ts) < _PG_CONN_TTL:
+        return _PgConnection(_pg_conn)
+
+    # Connection doesn't exist or TTL expired — health check it
+    if _pg_conn is not None:
         try:
-            # Lightweight health check
             cur = _pg_conn.cursor()
             cur.execute("SELECT 1")
             cur.close()
+            # Connection is still alive — renew TTL and return
+            _pg_conn_ts = now
             return _PgConnection(_pg_conn)
         except Exception:
             # Connection is dead, will reconnect below
@@ -71,9 +77,20 @@ def _get_pg_conn():
         separator = '&' if '?' in db_url else '?'
         db_url = f"{db_url}{separator}connect_timeout=15"
 
-    _pg_conn = psycopg2.connect(db_url)
-    _pg_conn_ts = now
-    return _PgConnection(_pg_conn)
+    # Try to connect with retry (3 attempts with backoff)
+    last_error = None
+    for attempt in range(3):
+        try:
+            _pg_conn = psycopg2.connect(db_url)
+            _pg_conn_ts = now
+            return _PgConnection(_pg_conn)
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                time.sleep(1 + attempt * 2)  # 1s, 3s backoff
+    
+    # All retries failed — propagate as connection error
+    raise RuntimeError(f"Could not connect to PostgreSQL after 3 attempts: {last_error}") from last_error
 
 
 # ── Database connection helpers ────────────────────────────────

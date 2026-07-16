@@ -180,7 +180,10 @@
         <a href="/myshows">My Shows</a>
         <a href="/mymovies">My Movies</a>
         <a href="/history">History</a>
-        <a href="/logout">Logout</a>
+    </div>
+    <div class="user-area">
+        <span style="color:#999;font-size:13px;margin-right:8px;">👤 {{ session.get('username', 'User') }}</span>
+        <a href="/logout" style="color:#e50914;font-size:13px;">Logout</a>
     </div>
     {% else %}
     <div class="user-area">
@@ -196,6 +199,7 @@
 <!-- ─── Mobile Nav Dropdown ─── -->
 <div class="mobile-nav-dropdown" id="mobileNav">
     {% if session.user_id %}
+    <a style="color:#888;font-size:14px;padding:14px 0;border-bottom:1px solid #222;">👤 {{ session.get('username', 'User') }}</a>
     <a href="/myshows">📺 My Shows</a>
     <a href="/mymovies">🎬 My Movies</a>
     <a href="/history">📜 History</a>

@@ -69,7 +69,7 @@ app.config.update(
 
 # ── TMDB Response Cache (in-memory, TTL-based) ──────────────────────
 _tmdb_cache = {}
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 600  # 10 minutes (reduced TMDB API calls)
 
 
 def _cache_key(url, params):
@@ -306,7 +306,9 @@ def signup():
                 f'INSERT INTO users (username, password_hash) VALUES (?, ?){id_suffix}',
                 (username, password_hash))
             conn.commit()
-            session['user_id'] = lastrowid(cursor)
+            user_id = lastrowid(cursor)
+            session['user_id'] = user_id
+            session['username'] = username
             session.permanent = True  # 👈 Keeps you logged in for 30 days
             return redirect('/myshows')
         except Exception:
@@ -342,6 +344,7 @@ def login():
 
             if user and check_password_hash(user[1], password):
                 session['user_id'] = user[0]
+                session['username'] = username
                 session.permanent = True  # 👈 Keeps you logged in for 30 days
                 return redirect('/myshows')
             else:
@@ -358,7 +361,7 @@ def login():
 
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)
+    session.clear()
     return redirect('/login')
 
 
@@ -399,23 +402,28 @@ def add_show(show_id):
         flash("Couldn't fetch show details.", "error")
         return redirect('/')
 
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (show["id"], session['user_id']))
-        if cursor.fetchone():
-            flash(f"{escape(show['name'])} is already in your shows.", "info")
-        else:
-            # Cache the total episode count in the database so MyShows doesn't need TMDB calls
-            total_ep, _ = get_show_episode_count(show["id"])
-            exe(cursor, '''
-                INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id'], total_ep))
-            conn.commit()
-            flash(f"Added {escape(show['name'])}!", "success")
-    finally:
-        conn.close()
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (show["id"], session['user_id']))
+            if cursor.fetchone():
+                flash(f"{escape(show['name'])} is already in your shows.", "info")
+            else:
+                # Cache the total episode count in the database so MyShows doesn't need TMDB calls
+                total_ep, _ = get_show_episode_count(show["id"])
+                exe(cursor, '''
+                    INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id'], total_ep))
+                conn.commit()
+                flash(f"Added {escape(show['name'])}!", "success")
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"ADD SHOW ERROR ({show_id}): {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not add show. Please try again.", "error")
 
     return redirect(request.referrer or '/myshows')
 
@@ -431,21 +439,26 @@ def add_movie(movie_id):
         flash("Couldn't fetch movie details.", "error")
         return redirect('/')
 
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (movie["id"], session['user_id']))
-        if cursor.fetchone():
-            flash(f"{escape(movie['title'])} is already in your movies.", "info")
-        else:
-            exe(cursor, '''
-                INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (movie["id"], movie["title"], movie["poster_path"], "Movie", movie.get("release_date", ""), session['user_id']))
-            conn.commit()
-            flash(f"Added {escape(movie['title'])} to My Movies!", "success")
-    finally:
-        conn.close()
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (movie["id"], session['user_id']))
+            if cursor.fetchone():
+                flash(f"{escape(movie['title'])} is already in your movies.", "info")
+            else:
+                exe(cursor, '''
+                    INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (movie["id"], movie["title"], movie["poster_path"], "Movie", movie.get("release_date", ""), session['user_id']))
+                conn.commit()
+                flash(f"Added {escape(movie['title'])} to My Movies!", "success")
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"ADD MOVIE ERROR ({movie_id}): {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not add movie. Please try again.", "error")
 
     return redirect(request.referrer or '/mymovies')
 
@@ -544,15 +557,20 @@ def my_movies():
 def remove_show(show_id):
     if not validate_csrf_token(request.form.get('_csrf_token')):
         abort(403)
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, 'DELETE FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
-        exe(cursor, 'DELETE FROM watched_episodes WHERE show_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
-        exe(cursor, 'DELETE FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
-        conn.commit()
-    finally:
-        conn.close()
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'DELETE FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+            exe(cursor, 'DELETE FROM watched_episodes WHERE show_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+            exe(cursor, 'DELETE FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"REMOVE ERROR ({show_id}): {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not remove item. Try again.", "error")
     return redirect(request.referrer or '/myshows')
 
 
@@ -697,47 +715,52 @@ def mark_watched(show_id, season_number, episode_number):
         abort(403)
 
     user_id = session['user_id']
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, '''
-            SELECT id FROM watched_episodes 
-            WHERE show_tmdb_id=? AND season_number=? AND episode_number=? AND user_id=?
-        ''', (show_id, season_number, episode_number, user_id))
-        existing = cursor.fetchone()
-
-        if existing:
-            exe(cursor, 'DELETE FROM watched_episodes WHERE id=?', (existing[0],))
-            status = "unwatched"
-        else:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
             exe(cursor, '''
-                INSERT INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
-                VALUES (?, ?, ?, ?)
+                SELECT id FROM watched_episodes 
+                WHERE show_tmdb_id=? AND season_number=? AND episode_number=? AND user_id=?
             ''', (show_id, season_number, episode_number, user_id))
-            status = "watched"
+            existing = cursor.fetchone()
 
-        conn.commit()
+            if existing:
+                exe(cursor, 'DELETE FROM watched_episodes WHERE id=?', (existing[0],))
+                status = "unwatched"
+            else:
+                exe(cursor, '''
+                    INSERT INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                    VALUES (?, ?, ?, ?)
+                ''', (show_id, season_number, episode_number, user_id))
+                status = "watched"
 
-        exe(cursor, '''
-            SELECT COUNT(*) FROM watched_episodes 
-            WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-        ''', (show_id, user_id))
-        watched_count = cursor.fetchone()[0]
-    finally:
-        conn.close()
+            conn.commit()
 
-    total_episodes, _ = get_show_episode_count(show_id)
-    finished = (watched_count == total_episodes and total_episodes > 0 and status == "watched")
+            exe(cursor, '''
+                SELECT COUNT(*) FROM watched_episodes 
+                WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
+            ''', (show_id, user_id))
+            watched_count = cursor.fetchone()[0]
+        finally:
+            conn.close()
 
-    total_in_season = get_season_episode_count(show_id, season_number)
-    is_last_episode = (episode_number == total_in_season and total_in_season > 0)
+        total_episodes, _ = get_show_episode_count(show_id)
+        finished = (watched_count == total_episodes and total_episodes > 0 and status == "watched")
 
-    return jsonify({
-        "status": status,
-        "finished": finished,
-        "is_last_episode": is_last_episode,
-        "season_number": season_number,
-    })
+        total_in_season = get_season_episode_count(show_id, season_number)
+        is_last_episode = (episode_number == total_in_season and total_in_season > 0)
+
+        return jsonify({
+            "status": status,
+            "finished": finished,
+            "is_last_episode": is_last_episode,
+            "season_number": season_number,
+        })
+    except Exception as e:
+        logger.error(f"MARK WATCHED ERROR ({show_id}/{season_number}/{episode_number}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Could not mark episode."}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -749,18 +772,23 @@ def mark_season_watched(show_id, season_number, up_to_episode):
     user_id = session['user_id']
     if not validate_csrf_token(request.form.get('_csrf_token')):
         abort(403)
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        episodes = [(show_id, season_number, ep, user_id) for ep in range(1, up_to_episode + 1)]
-        exemany(cursor, '''
-            INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
-            VALUES (?, ?, ?, ?)
-        ''', episodes)
-        conn.commit()
-    finally:
-        conn.close()
-    return jsonify({"status": "ok", "marked_up_to": up_to_episode})
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            episodes = [(show_id, season_number, ep, user_id) for ep in range(1, up_to_episode + 1)]
+            exemany(cursor, '''
+                INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                VALUES (?, ?, ?, ?)
+            ''', episodes)
+            conn.commit()
+        finally:
+            conn.close()
+        return jsonify({"status": "ok", "marked_up_to": up_to_episode})
+    except Exception as e:
+        logger.error(f"MARK SEASON WATCHED ERROR ({show_id}/{season_number}/{up_to_episode}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Could not mark season."}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -780,26 +808,30 @@ def mark_previous_seasons(show_id, season_number):
     if not show_data:
         return jsonify({"status": "error", "message": "Could not fetch show data"})
 
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        episodes = []
-        for season in show_data.get("seasons", []):
-            sn = season["season_number"]
-            if sn > 0 and sn < season_number:
-                ep_count = season.get("episode_count", 0)
-                for ep in range(1, ep_count + 1):
-                    episodes.append((show_id, sn, ep, user_id))
-        if episodes:
-            exemany(cursor, '''
-                INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
-                VALUES (?, ?, ?, ?)
-            ''', episodes)
-        conn.commit()
-    finally:
-        conn.close()
-
-    return jsonify({"status": "ok", "marked_previous_seasons_up_to": season_number - 1})
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            episodes = []
+            for season in show_data.get("seasons", []):
+                sn = season["season_number"]
+                if sn > 0 and sn < season_number:
+                    ep_count = season.get("episode_count", 0)
+                    for ep in range(1, ep_count + 1):
+                        episodes.append((show_id, sn, ep, user_id))
+            if episodes:
+                exemany(cursor, '''
+                    INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                    VALUES (?, ?, ?, ?)
+                ''', episodes)
+            conn.commit()
+        finally:
+            conn.close()
+        return jsonify({"status": "ok", "marked_previous_seasons_up_to": season_number - 1})
+    except Exception as e:
+        logger.error(f"MARK PREVIOUS SEASONS ERROR ({show_id}/{season_number}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Database error."}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -819,25 +851,30 @@ def mark_all_seasons_watched(show_id):
     if not show_data:
         return jsonify({"status": "error", "message": "Could not fetch show data"})
 
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        episodes = []
-        for season in show_data.get("seasons", []):
-            sn = season["season_number"]
-            if sn > 0:
-                ep_count = season.get("episode_count", 0)
-                for ep in range(1, ep_count + 1):
-                    episodes.append((show_id, sn, ep, user_id))
-        if episodes:
-            exemany(cursor, '''
-                INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
-                VALUES (?, ?, ?, ?)
-            ''', episodes)
-        conn.commit()
-    finally:
-        conn.close()
-    return jsonify({"status": "ok", "marked_count": len(episodes)})
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            episodes = []
+            for season in show_data.get("seasons", []):
+                sn = season["season_number"]
+                if sn > 0:
+                    ep_count = season.get("episode_count", 0)
+                    for ep in range(1, ep_count + 1):
+                        episodes.append((show_id, sn, ep, user_id))
+            if episodes:
+                exemany(cursor, '''
+                    INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                    VALUES (?, ?, ?, ?)
+                ''', episodes)
+            conn.commit()
+        finally:
+            conn.close()
+        return jsonify({"status": "ok", "marked_count": len(episodes)})
+    except Exception as e:
+        logger.error(f"MARK ALL SEASONS WATCHED ERROR ({show_id}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Database error."}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -849,21 +886,26 @@ def watch_movie(movie_id):
     user_id = session['user_id']
     if not validate_csrf_token(request.form.get('_csrf_token')):
         abort(403)
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie_id, user_id))
-        existing = cursor.fetchone()
-        if existing:
-            exe(cursor, 'DELETE FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie_id, user_id))
-            status = "unwatched"
-        else:
-            exe(cursor, 'INSERT INTO watched_movies (movie_tmdb_id, user_id) VALUES (?, ?)', (movie_id, user_id))
-            status = "watched"
-        conn.commit()
-    finally:
-        conn.close()
-    return jsonify({"status": status})
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie_id, user_id))
+            existing = cursor.fetchone()
+            if existing:
+                exe(cursor, 'DELETE FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie_id, user_id))
+                status = "unwatched"
+            else:
+                exe(cursor, 'INSERT INTO watched_movies (movie_tmdb_id, user_id) VALUES (?, ?)', (movie_id, user_id))
+                status = "watched"
+            conn.commit()
+        finally:
+            conn.close()
+        return jsonify({"status": status})
+    except Exception as e:
+        logger.error(f"WATCH MOVIE ERROR ({movie_id}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Database error."}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════
