@@ -256,7 +256,19 @@ def home():
 # ── Health check endpoint (Render friendly) ────────────────────────────
 @app.route('/health')
 def health():
-    return jsonify({"status": "ok"}), 200
+    """Health check that also warms up the database connection.
+    Call this periodically to keep the app and DB awake!
+    """
+    db_status = "unknown"
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.close()
+        db_status = "ok"
+    except Exception as e:
+        db_status = str(e)
+    return jsonify({"status": "ok", "database": db_status}), 200
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -394,10 +406,12 @@ def add_show(show_id):
         if cursor.fetchone():
             flash(f"{escape(show['name'])} is already in your shows.", "info")
         else:
+            # Cache the total episode count in the database so MyShows doesn't need TMDB calls
+            total_ep, _ = get_show_episode_count(show["id"])
             exe(cursor, '''
-                INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id']))
+                INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id'], total_ep))
             conn.commit()
             flash(f"Added {escape(show['name'])}!", "success")
     finally:
@@ -447,26 +461,35 @@ def my_shows():
         try:
             cursor = conn.cursor()
             exe(cursor, '''
-                SELECT tmdb_id, name, poster_path, status, first_air_date 
+                SELECT tmdb_id, name, poster_path, status, first_air_date, COALESCE(total_episodes, 0)
                 FROM shows WHERE user_id=? AND status != 'Movie'
             ''', (session['user_id'],))
             shows = cursor.fetchall()
 
             shows_with_progress = []
             for show_row in shows:
+                # show_row = (tmdb_id, name, poster_path, status, first_air_date, total_episodes)
                 show_id = show_row[0]
+                total_episodes = show_row[5] or 0
+
                 exe(cursor, '''
                     SELECT COUNT(*) FROM watched_episodes 
                     WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
                 ''', (show_id, session['user_id']))
                 watched_count = cursor.fetchone()[0]
 
-                total_episodes, show_data = get_show_episode_count(show_id)
+                # Use cached total_episodes from DB to avoid TMDB API calls on every load
+                if not total_episodes:
+                    total_episodes, show_data = get_show_episode_count(show_id)
+                else:
+                    show_data = None
+
                 rating = show_data.get("vote_average", 0) if show_data else 0
 
                 percent = int((watched_count / total_episodes) * 100) if total_episodes else 0
 
-                shows_with_progress.append(show_row + (watched_count, total_episodes, percent, rating))
+                # Build tuple: first 5 DB cols + (watched_count, total_episodes, percent, rating)
+                shows_with_progress.append(show_row[:5] + (watched_count, total_episodes, percent, rating))
         finally:
             conn.close()
 

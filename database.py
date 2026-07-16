@@ -69,7 +69,7 @@ def _get_pg_conn():
     db_url = DATABASE_URL
     if 'connect_timeout' not in (db_url or ''):
         separator = '&' if '?' in db_url else '?'
-        db_url = f"{db_url}{separator}connect_timeout=10"
+        db_url = f"{db_url}{separator}connect_timeout=15"
 
     _pg_conn = psycopg2.connect(db_url)
     _pg_conn_ts = now
@@ -173,6 +173,7 @@ def init_db(db_path=None):
                 status TEXT,
                 first_air_date TEXT,
                 user_id INTEGER NOT NULL,
+                total_episodes INTEGER DEFAULT 0,
                 PRIMARY KEY (tmdb_id, user_id)
             )
         ''')
@@ -215,6 +216,11 @@ def init_db(db_path=None):
                 password_hash TEXT NOT NULL
             )
         ''')
+        # Add total_episodes column for existing databases (safe to run multiple times)
+        try:
+            cursor.execute("ALTER TABLE shows ADD COLUMN total_episodes INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
     else:
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS shows (
@@ -224,6 +230,7 @@ def init_db(db_path=None):
                 status TEXT,
                 first_air_date TEXT,
                 user_id INTEGER NOT NULL,
+                total_episodes INTEGER DEFAULT 0,
                 PRIMARY KEY (tmdb_id, user_id)
             )
         ''')
@@ -268,6 +275,11 @@ def init_db(db_path=None):
                 password_hash TEXT NOT NULL
             )
         ''')
+        # Add total_episodes column for existing databases
+        try:
+            cursor.execute("ALTER TABLE shows ADD COLUMN total_episodes INTEGER DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
 
     conn.commit()
     if not use_pg():
