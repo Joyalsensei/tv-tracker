@@ -24,13 +24,36 @@
         /* ── Navigation Bar ── */
         .navbar {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 40px; background: linear-gradient(180deg, rgba(0,0,0,.8) 0%, transparent 100%);
+            padding: 16px 40px; background: linear-gradient(180deg, rgba(0,0,0,.95) 0%, transparent 100%);
             position: fixed; top: 0; left: 0; right: 0; z-index: 100;
         }
         .navbar .logo { font-size: 24px; font-weight: 800; color: #e50914; letter-spacing: -1px; }
         .navbar .nav-links { display: flex; gap: 20px; align-items: center; }
-        .navbar .nav-links a { color: #ccc; font-size: 14px; transition: color .2s; }
+        .navbar .nav-links a { color: #ccc; font-size: 14px; transition: color .2s; padding: 8px 0; }
         .navbar .nav-links a:hover { color: #fff; }
+
+        /* ── Hamburger Menu ── */
+        .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 4px; background: none; border: none; }
+        .hamburger span { display: block; width: 24px; height: 2px; background: #ccc; border-radius: 2px; transition: .3s; }
+        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
+        .hamburger.active span:nth-child(2) { opacity: 0; }
+        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
+        .mobile-nav-dropdown {
+            display: none;
+            position: fixed; top: 56px; left: 0; right: 0;
+            background: rgba(20,20,20,.98);
+            padding: 16px 24px;
+            z-index: 99;
+            border-bottom: 1px solid #333;
+        }
+        .mobile-nav-dropdown.open { display: block; }
+        .mobile-nav-dropdown a {
+            display: block; padding: 14px 0;
+            font-size: 16px; color: #ccc;
+            border-bottom: 1px solid #222;
+        }
+        .mobile-nav-dropdown a:last-child { border-bottom: none; }
+        .mobile-nav-dropdown a:hover { color: #fff; }
 
         /* ── Auth Container ── */
         .auth-wrapper {
@@ -71,7 +94,7 @@
         .auth-form input[type="password"] {
             width: 100%;
             padding: 14px 16px;
-            font-size: 15px;
+            font-size: 16px;
             background: rgba(255,255,255,.08);
             color: #fff;
             border: 1px solid rgba(255,255,255,.15);
@@ -85,7 +108,7 @@
         .auth-form input::placeholder { color: #666; }
         .auth-form input.error { border-color: #e74c3c; }
         .auth-form button[type="submit"] {
-            padding: 14px;
+            padding: 16px;
             font-size: 16px;
             font-weight: 700;
             margin-top: 4px;
@@ -96,10 +119,7 @@
             font-size: 14px;
             color: #888;
         }
-        .auth-card .auth-footer a {
-            color: #fff;
-            font-weight: 600;
-        }
+        .auth-card .auth-footer a { color: #fff; font-weight: 600; }
         .auth-card .auth-footer a:hover { text-decoration: underline; }
 
         /* ── Flash messages ── */
@@ -111,8 +131,11 @@
         /* ── Responsive ── */
         @media (max-width: 768px) {
             .navbar { padding: 12px 16px; }
+            .navbar .nav-links { display: none; }
+            .hamburger { display: flex; }
             .auth-card { padding: 32px 24px; }
             .auth-card h1 { font-size: 26px; }
+            .auth-form button[type="submit"] { padding: 16px; }
         }
     </style>
 </head>
@@ -124,7 +147,16 @@
     <div class="nav-links">
         <a href="/login">Login</a>
     </div>
+    <button class="hamburger" onclick="toggleNav()" aria-label="Menu">
+        <span></span><span></span><span></span>
+    </button>
 </nav>
+
+<!-- ─── Mobile Nav Dropdown ─── -->
+<div class="mobile-nav-dropdown" id="mobileNav">
+    <a href="/">🏠 Home</a>
+    <a href="/login">🔑 Login</a>
+</div>
 
 <!-- ─── Flash Messages ─── -->
 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -160,5 +192,19 @@
     </div>
 </div>
 
+<script>
+function toggleNav() {
+    const menu = document.getElementById('mobileNav');
+    const hamburger = document.querySelector('.hamburger');
+    menu.classList.toggle('open');
+    hamburger.classList.toggle('active');
+}
+document.querySelectorAll('.mobile-nav-dropdown a').forEach(link => {
+    link.addEventListener('click', () => {
+        document.getElementById('mobileNav').classList.remove('open');
+        document.querySelector('.hamburger').classList.remove('active');
+    });
+});
+</script>
 </body>
 </html>

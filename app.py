@@ -413,37 +413,43 @@ def add_movie(movie_id):
 @app.route('/myshows')
 @login_required
 def my_shows():
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, '''
-            SELECT tmdb_id, name, poster_path, status, first_air_date 
-            FROM shows WHERE user_id=? AND status != 'Movie'
-        ''', (session['user_id'],))
-        shows = cursor.fetchall()
-
-        shows_with_progress = []
-        for show_row in shows:
-            show_id = show_row[0]
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
             exe(cursor, '''
-                SELECT COUNT(*) FROM watched_episodes 
-                WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-            ''', (show_id, session['user_id']))
-            watched_count = cursor.fetchone()[0]
+                SELECT tmdb_id, name, poster_path, status, first_air_date 
+                FROM shows WHERE user_id=? AND status != 'Movie'
+            ''', (session['user_id'],))
+            shows = cursor.fetchall()
 
-            total_episodes, show_data = get_show_episode_count(show_id)
-            rating = show_data.get("vote_average", 0) if show_data else 0
+            shows_with_progress = []
+            for show_row in shows:
+                show_id = show_row[0]
+                exe(cursor, '''
+                    SELECT COUNT(*) FROM watched_episodes 
+                    WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
+                ''', (show_id, session['user_id']))
+                watched_count = cursor.fetchone()[0]
 
-            percent = int((watched_count / total_episodes) * 100) if total_episodes else 0
+                total_episodes, show_data = get_show_episode_count(show_id)
+                rating = show_data.get("vote_average", 0) if show_data else 0
 
-            shows_with_progress.append(show_row + (watched_count, total_episodes, percent, rating))
-    finally:
-        conn.close()
+                percent = int((watched_count / total_episodes) * 100) if total_episodes else 0
 
-    in_progress = [s for s in shows_with_progress if s[7] < 100]
-    completed = [s for s in shows_with_progress if s[7] == 100]
+                shows_with_progress.append(show_row + (watched_count, total_episodes, percent, rating))
+        finally:
+            conn.close()
 
-    return render_template('myshows.html', shows=in_progress, completed=completed)
+        in_progress = [s for s in shows_with_progress if s[7] < 100]
+        completed = [s for s in shows_with_progress if s[7] == 100]
+
+        return render_template('myshows.html', shows=in_progress, completed=completed)
+    except Exception as e:
+        logger.error(f"MY SHOWS ERROR: {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not load your shows. Please try again.", "error")
+        return redirect('/')
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -452,24 +458,30 @@ def my_shows():
 @app.route('/mymovies')
 @login_required
 def my_movies():
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, '''
-            SELECT tmdb_id, name, poster_path, status, first_air_date 
-            FROM shows WHERE user_id=? AND status = 'Movie'
-        ''', (session['user_id'],))
-        movies = cursor.fetchall()
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, '''
+                SELECT tmdb_id, name, poster_path, status, first_air_date 
+                FROM shows WHERE user_id=? AND status = 'Movie'
+            ''', (session['user_id'],))
+            movies = cursor.fetchall()
 
-        movies_with_status = []
-        for movie in movies:
-            exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie[0], session['user_id']))
-            watched = cursor.fetchone() is not None
-            movies_with_status.append(movie + (watched, 0))
-    finally:
-        conn.close()
+            movies_with_status = []
+            for movie in movies:
+                exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie[0], session['user_id']))
+                watched = cursor.fetchone() is not None
+                movies_with_status.append(movie + (watched, 0))
+        finally:
+            conn.close()
 
-    return render_template('mymovies.html', movies=movies_with_status)
+        return render_template('mymovies.html', movies=movies_with_status)
+    except Exception as e:
+        logger.error(f"MY MOVIES ERROR: {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not load your movies. Please try again.", "error")
+        return redirect('/')
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -498,86 +510,92 @@ def remove_show(show_id):
 @app.route('/show/<int:show_id>')
 @login_required
 def show_detail(show_id):
-    params = {"api_key": API_KEY, "append_to_response": "recommendations,similar"}
+    try:
+        params = {"api_key": API_KEY, "append_to_response": "recommendations,similar"}
 
-    # Try TV show first
-    url = f"https://api.themoviedb.org/3/tv/{show_id}"
-    show = tmdb_get(url, {**params, "append_to_response": "recommendations,similar,videos"})
+        # Try TV show first
+        url = f"https://api.themoviedb.org/3/tv/{show_id}"
+        show = tmdb_get(url, {**params, "append_to_response": "recommendations,similar,videos"})
 
-    if show and show.get("seasons") is not None:
-        providers = tmdb_get(
-            f"https://api.themoviedb.org/3/tv/{show_id}/watch/providers",
-            {"api_key": API_KEY}
-        )
-        watch_providers = []
-        if providers:
-            results = providers.get("results", {})
-            for country in ["IN", "US"]:
-                region = results.get(country, {})
-                if region:
-                    flatrate = region.get("flatrate", [])
-                    watch_providers = [p for p in flatrate]
-                    break
+        if show and show.get("seasons") is not None:
+            providers = tmdb_get(
+                f"https://api.themoviedb.org/3/tv/{show_id}/watch/providers",
+                {"api_key": API_KEY}
+            )
+            watch_providers = []
+            if providers:
+                results = providers.get("results", {})
+                for country in ["IN", "US"]:
+                    region = results.get(country, {})
+                    if region:
+                        flatrate = region.get("flatrate", [])
+                        watch_providers = [p for p in flatrate]
+                        break
 
-        conn = get_conn()
-        try:
-            cursor = conn.cursor()
-            exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
-            is_in_shows = cursor.fetchone() is not None
-        finally:
-            conn.close()
+            conn = get_conn()
+            try:
+                cursor = conn.cursor()
+                exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+                is_in_shows = cursor.fetchone() is not None
+            finally:
+                conn.close()
 
-        return render_template(
-            'show_detail.html',
-            show=show,
-            watch_providers=watch_providers,
-            rating=show.get("vote_average", 0),
-            vote_count=show.get("vote_count", 0),
-            recommendations=(show.get("recommendations") or {}).get("results", [])[:10],
-            similar=(show.get("similar") or {}).get("results", [])[:10],
-            is_in_shows=is_in_shows,
-        )
+            return render_template(
+                'show_detail.html',
+                show=show,
+                watch_providers=watch_providers,
+                rating=show.get("vote_average", 0),
+                vote_count=show.get("vote_count", 0),
+                recommendations=(show.get("recommendations") or {}).get("results", [])[:10],
+                similar=(show.get("similar") or {}).get("results", [])[:10],
+                is_in_shows=is_in_shows,
+            )
 
-    # Try movie
-    movie_url = f"https://api.themoviedb.org/3/movie/{show_id}"
-    movie_data = tmdb_get(movie_url, {"api_key": API_KEY, "append_to_response": "recommendations,similar,videos"})
+        # Try movie
+        movie_url = f"https://api.themoviedb.org/3/movie/{show_id}"
+        movie_data = tmdb_get(movie_url, {"api_key": API_KEY, "append_to_response": "recommendations,similar,videos"})
 
-    if movie_data and movie_data.get("title"):
-        conn = get_conn()
-        try:
-            cursor = conn.cursor()
-            exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
-            is_watched = cursor.fetchone() is not None
-        finally:
-            conn.close()
+        if movie_data and movie_data.get("title"):
+            conn = get_conn()
+            try:
+                cursor = conn.cursor()
+                exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+                is_watched = cursor.fetchone() is not None
+            finally:
+                conn.close()
 
-        providers = tmdb_get(
-            f"https://api.themoviedb.org/3/movie/{show_id}/watch/providers",
-            {"api_key": API_KEY}
-        )
-        watch_providers = []
-        if providers:
-            results = providers.get("results", {})
-            for country in ["IN", "US"]:
-                region = results.get(country, {})
-                if region:
-                    flatrate = region.get("flatrate", [])
-                    watch_providers = [p for p in flatrate]
-                    break
+            providers = tmdb_get(
+                f"https://api.themoviedb.org/3/movie/{show_id}/watch/providers",
+                {"api_key": API_KEY}
+            )
+            watch_providers = []
+            if providers:
+                results = providers.get("results", {})
+                for country in ["IN", "US"]:
+                    region = results.get(country, {})
+                    if region:
+                        flatrate = region.get("flatrate", [])
+                        watch_providers = [p for p in flatrate]
+                        break
 
-        return render_template(
-            'movie_detail.html',
-            movie=movie_data,
-            is_watched=is_watched,
-            watch_providers=watch_providers,
-            rating=movie_data.get("vote_average", 0),
-            vote_count=movie_data.get("vote_count", 0),
-            recommendations=(movie_data.get("recommendations") or {}).get("results", [])[:10],
-            similar=(movie_data.get("similar") or {}).get("results", [])[:10],
-        )
+            return render_template(
+                'movie_detail.html',
+                movie=movie_data,
+                is_watched=is_watched,
+                watch_providers=watch_providers,
+                rating=movie_data.get("vote_average", 0),
+                vote_count=movie_data.get("vote_count", 0),
+                recommendations=(movie_data.get("recommendations") or {}).get("results", [])[:10],
+                similar=(movie_data.get("similar") or {}).get("results", [])[:10],
+            )
 
-    flash("Couldn't load details.", "error")
-    return redirect('/myshows')
+        flash("Couldn't load details.", "error")
+        return redirect('/myshows')
+    except Exception as e:
+        logger.error(f"SHOW DETAIL ERROR ({show_id}): {e}")
+        logger.error(traceback.format_exc())
+        flash("Couldn't load details.", "error")
+        return redirect('/myshows')
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -586,28 +604,34 @@ def show_detail(show_id):
 @app.route('/show/<int:show_id>/season/<int:season_number>')
 @login_required
 def season_detail(show_id, season_number):
-    url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
-    params = {"api_key": API_KEY}
-    season = tmdb_get(url, params)
-
-    if season is None:
-        flash("Couldn't load season.", "error")
-        return redirect('/myshows')
-
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, '''
-            SELECT episode_number FROM watched_episodes
-            WHERE show_tmdb_id=? AND season_number=? AND user_id=?
-        ''', (show_id, season_number, session['user_id']))
-        watched_rows = cursor.fetchall()
-    finally:
-        conn.close()
+        url = f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}"
+        params = {"api_key": API_KEY}
+        season = tmdb_get(url, params)
 
-    watched_episodes = {row[0] for row in watched_rows}
+        if season is None:
+            flash("Couldn't load season.", "error")
+            return redirect('/myshows')
 
-    return render_template('season_detail.html', season=season, show_id=show_id, watched_episodes=watched_episodes)
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, '''
+                SELECT episode_number FROM watched_episodes
+                WHERE show_tmdb_id=? AND season_number=? AND user_id=?
+            ''', (show_id, season_number, session['user_id']))
+            watched_rows = cursor.fetchall()
+        finally:
+            conn.close()
+
+        watched_episodes = {row[0] for row in watched_rows}
+
+        return render_template('season_detail.html', season=season, show_id=show_id, watched_episodes=watched_episodes)
+    except Exception as e:
+        logger.error(f"SEASON DETAIL ERROR ({show_id}/{season_number}): {e}")
+        logger.error(traceback.format_exc())
+        flash("Couldn't load season details.", "error")
+        return redirect('/myshows')
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -799,84 +823,90 @@ def history():
     """Watched history page — shows recently watched (timeline) and all watched content."""
     user_id = session['user_id']
 
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
 
-        # Watched movies with details
-        exe(cursor, '''
-            SELECT wm.movie_tmdb_id, COALESCE(s.name, 'Unknown'), COALESCE(s.poster_path, ''), wm.watched_at
-            FROM watched_movies wm
-            LEFT JOIN shows s ON wm.movie_tmdb_id = s.tmdb_id AND wm.user_id = s.user_id
-            WHERE wm.user_id = ?
-            ORDER BY wm.watched_at DESC
-        ''', (user_id,))
-        watched_movies = cursor.fetchall()
-
-        # All user's shows (TV only, not movies)
-        exe(cursor, '''
-            SELECT tmdb_id, name, poster_path, status, first_air_date
-            FROM shows WHERE user_id=? AND status != 'Movie'
-        ''', (user_id,))
-        all_shows = cursor.fetchall()
-
-        # Completed shows — reuse the same connection, no N+1
-        completed_shows = []
-        for row in all_shows:
-            show_id = row[0]
+            # Watched movies with details
             exe(cursor, '''
-                SELECT COUNT(*) FROM watched_episodes
-                WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-            ''', (show_id, user_id))
-            watched_count = cursor.fetchone()[0]
+                SELECT wm.movie_tmdb_id, COALESCE(s.name, 'Unknown'), COALESCE(s.poster_path, ''), wm.watched_at
+                FROM watched_movies wm
+                LEFT JOIN shows s ON wm.movie_tmdb_id = s.tmdb_id AND wm.user_id = s.user_id
+                WHERE wm.user_id = ?
+                ORDER BY wm.watched_at DESC
+            ''', (user_id,))
+            watched_movies = cursor.fetchall()
 
+            # All user's shows (TV only, not movies)
             exe(cursor, '''
-                SELECT watched_at FROM watched_episodes
-                WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-                ORDER BY watched_at DESC LIMIT 1
-            ''', (show_id, user_id))
-            latest_row = cursor.fetchone()
-            completed_at = latest_row[0] if latest_row else None
+                SELECT tmdb_id, name, poster_path, status, first_air_date
+                FROM shows WHERE user_id=? AND status != 'Movie'
+            ''', (user_id,))
+            all_shows = cursor.fetchall()
 
-            total_episodes, _ = get_show_episode_count(show_id)
-            if total_episodes > 0 and watched_count >= total_episodes:
-                completed_shows.append(row + (completed_at, 0))
+            # Completed shows — reuse the same connection, no N+1
+            completed_shows = []
+            for row in all_shows:
+                show_id = row[0]
+                exe(cursor, '''
+                    SELECT COUNT(*) FROM watched_episodes
+                    WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
+                ''', (show_id, user_id))
+                watched_count = cursor.fetchone()[0]
 
-        completed_shows.sort(key=lambda s: s[5] or "", reverse=True)
+                exe(cursor, '''
+                    SELECT watched_at FROM watched_episodes
+                    WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
+                    ORDER BY watched_at DESC LIMIT 1
+                ''', (show_id, user_id))
+                latest_row = cursor.fetchone()
+                completed_at = latest_row[0] if latest_row else None
 
-        # Build merged timeline (newest first) — no per-item API calls
-        timeline = []
-        for movie in watched_movies:
-            timeline.append({
-                "type": "movie",
-                "tmdb_id": movie[0],
-                "name": movie[1],
-                "poster_path": movie[2],
-                "date": movie[3],
-                "rating": 0,
-            })
-        for show in completed_shows:
-            timeline.append({
-                "type": "show",
-                "tmdb_id": show[0],
-                "name": show[1],
-                "poster_path": show[2],
-                "date": show[5],
-                "rating": 0,
-            })
-        timeline.sort(key=lambda x: x["date"] or "", reverse=True)
+                total_episodes, _ = get_show_episode_count(show_id)
+                if total_episodes > 0 and watched_count >= total_episodes:
+                    completed_shows.append(row + (completed_at, 0))
 
-        watched_movies_simple = [(m[0], m[1], m[2], m[3], 0) for m in watched_movies]
+            completed_shows.sort(key=lambda s: s[5] or "", reverse=True)
 
-    finally:
-        conn.close()
+            # Build merged timeline (newest first) — no per-item API calls
+            timeline = []
+            for movie in watched_movies:
+                timeline.append({
+                    "type": "movie",
+                    "tmdb_id": movie[0],
+                    "name": movie[1],
+                    "poster_path": movie[2],
+                    "date": movie[3],
+                    "rating": 0,
+                })
+            for show in completed_shows:
+                timeline.append({
+                    "type": "show",
+                    "tmdb_id": show[0],
+                    "name": show[1],
+                    "poster_path": show[2],
+                    "date": show[5],
+                    "rating": 0,
+                })
+            timeline.sort(key=lambda x: x["date"] or "", reverse=True)
 
-    return render_template(
-        'history.html',
-        timeline=timeline,
-        watched_movies=watched_movies_simple,
-        completed_shows=completed_shows,
-    )
+            watched_movies_simple = [(m[0], m[1], m[2], m[3], 0) for m in watched_movies]
+
+        finally:
+            conn.close()
+
+        return render_template(
+            'history.html',
+            timeline=timeline,
+            watched_movies=watched_movies_simple,
+            completed_shows=completed_shows,
+        )
+    except Exception as e:
+        logger.error(f"HISTORY ERROR: {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not load history. Please try again.", "error")
+        return redirect('/myshows')
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -888,68 +918,74 @@ def admin_dashboard():
     """Simple admin page — shows user stats. Only the first user (you) can access."""
     user_id = session['user_id']
 
-    # Only the first registered user (you) can see this
-    conn = get_conn()
     try:
-        cursor = conn.cursor()
-        exe(cursor, 'SELECT id FROM users ORDER BY id ASC LIMIT 1')
-        first_user = cursor.fetchone()
-        if not first_user or first_user[0] != user_id:
-            flash("Admin access restricted.", "error")
-            return redirect('/')
+        # Only the first registered user (you) can see this
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'SELECT id FROM users ORDER BY id ASC LIMIT 1')
+            first_user = cursor.fetchone()
+            if not first_user or first_user[0] != user_id:
+                flash("Admin access restricted.", "error")
+                return redirect('/')
 
-        # Total users
-        exe(cursor, 'SELECT COUNT(*) FROM users')
-        total_users = cursor.fetchone()[0]
+            # Total users
+            exe(cursor, 'SELECT COUNT(*) FROM users')
+            total_users = cursor.fetchone()[0]
 
-        # Recent signups (last 10)
-        exe(cursor, 'SELECT id, username FROM users ORDER BY id DESC LIMIT 10')
-        recent_users = cursor.fetchall()
+            # Recent signups (last 10)
+            exe(cursor, 'SELECT id, username FROM users ORDER BY id DESC LIMIT 10')
+            recent_users = cursor.fetchall()
 
-        # Total shows
-        exe(cursor, 'SELECT COUNT(*) FROM shows')
-        total_shows = cursor.fetchone()[0]
+            # Total shows
+            exe(cursor, 'SELECT COUNT(*) FROM shows')
+            total_shows = cursor.fetchone()[0]
 
-        # Total movies
-        exe(cursor, "SELECT COUNT(*) FROM shows WHERE status = 'Movie'")
-        total_movies = cursor.fetchone()[0]
+            # Total movies
+            exe(cursor, "SELECT COUNT(*) FROM shows WHERE status = 'Movie'")
+            total_movies = cursor.fetchone()[0]
 
-        # Total TV shows
-        exe(cursor, "SELECT COUNT(*) FROM shows WHERE status != 'Movie'")
-        total_tv = cursor.fetchone()[0]
+            # Total TV shows
+            exe(cursor, "SELECT COUNT(*) FROM shows WHERE status != 'Movie'")
+            total_tv = cursor.fetchone()[0]
 
-        # Total watched episodes
-        exe(cursor, 'SELECT COUNT(*) FROM watched_episodes')
-        total_watched_eps = cursor.fetchone()[0]
+            # Total watched episodes
+            exe(cursor, 'SELECT COUNT(*) FROM watched_episodes')
+            total_watched_eps = cursor.fetchone()[0]
 
-        # Total watched movies
-        exe(cursor, 'SELECT COUNT(*) FROM watched_movies')
-        total_watched_movies = cursor.fetchone()[0]
+            # Total watched movies
+            exe(cursor, 'SELECT COUNT(*) FROM watched_movies')
+            total_watched_movies = cursor.fetchone()[0]
 
-        # Shows per user (top contributors)
-        exe(cursor, '''
-            SELECT u.username, COUNT(s.tmdb_id) as cnt
-            FROM users u
-            LEFT JOIN shows s ON u.id = s.user_id
-            GROUP BY u.id
-            ORDER BY cnt DESC
-            LIMIT 10
-        ''')
-        user_activity = cursor.fetchall()
+            # Shows per user (top contributors)
+            exe(cursor, '''
+                SELECT u.username, COUNT(s.tmdb_id) as cnt
+                FROM users u
+                LEFT JOIN shows s ON u.id = s.user_id
+                GROUP BY u.id
+                ORDER BY cnt DESC
+                LIMIT 10
+            ''')
+            user_activity = cursor.fetchall()
 
-    finally:
-        conn.close()
+        finally:
+            conn.close()
 
-    return render_template('admin.html',
-        total_users=total_users,
-        recent_users=recent_users,
-        total_shows=total_shows,
-        total_movies=total_movies,
-        total_tv=total_tv,
-        total_watched_eps=total_watched_eps,
-        total_watched_movies=total_watched_movies,
-        user_activity=user_activity,
-    )
+        return render_template('admin.html',
+            total_users=total_users,
+            recent_users=recent_users,
+            total_shows=total_shows,
+            total_movies=total_movies,
+            total_tv=total_tv,
+            total_watched_eps=total_watched_eps,
+            total_watched_movies=total_watched_movies,
+            user_activity=user_activity,
+        )
+    except Exception as e:
+        logger.error(f"ADMIN ERROR: {e}")
+        logger.error(traceback.format_exc())
+        flash("An error occurred loading the admin dashboard.", "error")
+        return redirect('/')
 
 
 if __name__ == "__main__":

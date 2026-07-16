@@ -11,6 +11,7 @@
             color: #eee;
             font-family: 'Segoe UI', Arial, sans-serif;
             padding: 30px;
+            overflow-x: hidden;
         }
         a { color: #66d9ef; text-decoration: none; }
         input, button { padding: 8px; font-size: 15px; border-radius: 6px; border: none; }
@@ -18,22 +19,26 @@
         button:hover { background: #f40612; }
 
         h1 { font-size: 28px; margin-bottom: 4px; }
-        .sub-nav { color: #999; font-size: 14px; margin-bottom: 20px; display: flex; gap: 16px; }
+        .sub-nav { color: #999; font-size: 14px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; }
+        .sub-nav a { padding: 8px 0; }
         .sub-nav a:hover { color: #fff; }
 
+        /* ── Grid: CSS grid instead of flexbox for even spacing ── */
         .show-grid {
-            display: flex;
-            flex-wrap: wrap;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             gap: 16px;
             list-style: none;
             padding: 0;
+            margin: 0;
         }
         .show-card {
-            width: 150px;
             text-align: center;
             transition: transform .2s;
+            width: 100%;
         }
         .show-card:hover { transform: scale(1.05); }
+        .show-card a { display: block; }
         .show-card img {
             width: 100%;
             border-radius: 8px;
@@ -51,34 +56,35 @@
             font-size: 12px;
             color: #f5c518;
         }
-        .progress-bg {
+        .show-card .progress-bg {
             background: #333;
             border-radius: 4px;
             height: 6px;
             margin-top: 6px;
             overflow: hidden;
         }
-        .progress-fill {
+        .show-card .progress-fill {
             background: #f5c518;
             height: 100%;
             transition: width .5s ease;
         }
-        .progress-text {
+        .show-card .progress-text {
             font-size: 11px;
             color: #999;
             margin-top: 2px;
         }
         .remove-link {
-            display: block;
+            display: inline-block;
             margin-top: 4px;
             font-size: 11px;
             color: #ff6b6b;
             background: none !important;
             border: none !important;
-            padding: 0 !important;
+            padding: 6px 0 !important;
             cursor: pointer;
         }
         .remove-link:hover { text-decoration: underline; }
+
         h2 {
             margin-top: 30px;
             margin-bottom: 10px;
@@ -89,17 +95,25 @@
             color: #999;
             margin-top: 20px;
         }
+
         @media (max-width: 600px) {
-            .show-card { width: 120px; }
+            body { padding: 16px; }
+            .show-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+            .show-card .card-title { font-size: 12px; }
+            .show-card .card-rating { font-size: 11px; }
+            h1 { font-size: 22px; }
+        }
+        @media (max-width: 400px) {
+            .show-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
         }
     </style>
 </head>
 <body>
     <h1>📺 My Shows</h1>
     <div class="sub-nav">
-        <a href="/">Home</a>
-        <a href="/mymovies">My Movies</a>
-        <a href="/history">History</a>
+        <a href="/">🏠 Home</a>
+        <a href="/mymovies">🎬 My Movies</a>
+        <a href="/history">📜 History</a>
     </div>
 
     {% if shows %}

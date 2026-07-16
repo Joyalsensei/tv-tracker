@@ -11,13 +11,14 @@
             color: #eee;
             font-family: 'Segoe UI', Arial, sans-serif;
             padding: 30px;
+            overflow-x: hidden;
         }
         a { color: #66d9ef; text-decoration: none; }
         input, button { padding: 8px 14px; font-size: 15px; border-radius: 6px; border: none; cursor: pointer; }
         button { background: #e50914; color: white; transition: background .2s; }
         button:hover { background: #f40612; }
 
-        .back-link { display: inline-block; margin-bottom: 20px; color: #999; font-size: 14px; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #999; font-size: 14px; padding: 8px 0; }
         .back-link:hover { color: #fff; }
 
         .badge-added {
@@ -57,27 +58,30 @@
         .provider-badge span { font-size: 13px; }
 
         .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
-        .actions a button, .actions button { font-size: 14px; }
+        .actions a button, .actions button { font-size: 14px; padding: 10px 18px; }
 
         .season-list { margin: 20px 0; }
         .season-row {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 14px 0; border-bottom: 1px solid #333;
+            border-bottom: 1px solid #333;
             transition: background .2s; border-radius: 6px; padding: 14px 10px;
         }
         .season-row:hover { background: #1a1a1a; }
         .season-row h3 { font-size: 16px; margin: 0; }
-        .season-row a { font-size: 13px; color: #66d9ef; }
+        .season-row a { font-size: 13px; color: #66d9ef; padding: 6px 0; }
 
         /* Recommendations / Similar */
         .shelf { margin: 30px 0; }
         .shelf h2 { font-size: 20px; margin-bottom: 12px; }
-        .shelf-scroll { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+        .shelf-scroll {
+            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
+            -webkit-overflow-scrolling: touch;
+        }
         .shelf-scroll::-webkit-scrollbar { height: 6px; }
         .shelf-scroll::-webkit-scrollbar-track { background: #222; border-radius: 3px; }
         .shelf-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
         .mini-card {
-            flex: 0 0 auto; width: 120px; text-align: center;
+            flex: 0 0 auto; width: 130px; text-align: center;
             transition: transform .2s; border-radius: 6px; overflow: hidden;
         }
         .mini-card:hover { transform: scale(1.06); }
@@ -91,11 +95,17 @@
         .flash.info { background: #3498db; color: white; }
 
         @media (max-width: 600px) {
+            body { padding: 16px; }
             .detail-header { flex-direction: column; align-items: center; text-align: center; }
-            .poster { max-width: 180px; }
-            .info h1 { font-size: 26px; }
-            .rating-section { justify-content: center; }
+            .poster { max-width: 160px; }
+            .info h1 { font-size: 24px; }
+            .rating-section { justify-content: center; flex-wrap: wrap; }
+            .rating-bar-bg { width: 100%; max-width: 200px; margin: 0 auto; }
             .actions { justify-content: center; }
+            .mini-card { width: 110px; }
+            .season-row { padding: 12px 8px; }
+            .season-row h3 { font-size: 14px; }
+            .season-row a { font-size: 12px; }
         }
     </style>
 </head>
@@ -198,11 +208,11 @@
             {% for rec in recommendations %}
             <a href="/show/{{ rec.id }}" class="mini-card">
                 {% if rec.poster_path %}
-                <img src="https://image.tmdb.org/t/p/w200{{ rec.poster_path }}" alt="{{ rec.name }}" loading="lazy">
+                <img src="https://image.tmdb.org/t/p/w200{{ rec.poster_path }}" alt="{{ rec.name or rec.title }}" loading="lazy">
                 {% else %}
                 <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:6px;"></div>
                 {% endif %}
-                <p>{{ rec.name }}</p>
+                <p>{{ rec.name or rec.title }}</p>
                 <span class="mini-rating">★ {{ "%.1f"|format(rec.vote_average|float) if rec.vote_average else "N/A" }}</span>
             </a>
             {% endfor %}
@@ -218,11 +228,11 @@
             {% for sim in similar %}
             <a href="/show/{{ sim.id }}" class="mini-card">
                 {% if sim.poster_path %}
-                <img src="https://image.tmdb.org/t/p/w200{{ sim.poster_path }}" alt="{{ sim.name }}" loading="lazy">
+                <img src="https://image.tmdb.org/t/p/w200{{ sim.poster_path }}" alt="{{ sim.name or sim.title }}" loading="lazy">
                 {% else %}
                 <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:6px;"></div>
                 {% endif %}
-                <p>{{ sim.name }}</p>
+                <p>{{ sim.name or sim.title }}</p>
                 <span class="mini-rating">★ {{ "%.1f"|format(sim.vote_average|float) if sim.vote_average else "N/A" }}</span>
             </a>
             {% endfor %}
