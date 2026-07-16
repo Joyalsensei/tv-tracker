@@ -22,7 +22,25 @@ from database import init_db, get_conn, use_pg, exe, exemany, lastrowid
 load_dotenv(Path(__file__).parent / '.env')
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
+
+# ── Persistent secret key (survives app restarts!) ─────────────
+# If FLASK_SECRET_KEY is not set in env, we generate one and save it
+# to a file so it stays the same across restarts. This prevents
+# sessions from being invalidated every time the app redeploys.
+_SECRET_KEY_FILE = Path(__file__).parent / '.secret_key'
+secret_key = os.environ.get("FLASK_SECRET_KEY")
+if secret_key:
+    app.secret_key = secret_key
+else:
+    print("WARNING: FLASK_SECRET_KEY not set! Sessions will persist via .secret_key file.", file=sys.stderr)
+    print("  Set FLASK_SECRET_KEY in your Render env for best results.", file=sys.stderr)
+    if _SECRET_KEY_FILE.exists():
+        app.secret_key = _SECRET_KEY_FILE.read_text().strip()
+    else:
+        app.secret_key = secrets.token_hex(32)
+        _SECRET_KEY_FILE.write_text(app.secret_key)
+        print(f"  Generated persistent key saved to {_SECRET_KEY_FILE}")
+
 API_KEY = os.environ.get("TMDB_API_KEY")
 DATABASE_PATH = os.environ.get("DATABASE_PATH", str(Path(__file__).parent / "tracker.db"))
 
@@ -116,13 +134,22 @@ def validate_csrf_token(token):
 app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
 # Initialize database on startup (fail gracefully on Render if DB is down)
-print("Connecting to database...")
+print("=" * 50)
+print("  Starting TV Tracker...")
+print("=" * 50)
+if use_pg():
+    print(f"  Database: PostgreSQL (via DATABASE_URL)")
+else:
+    print(f"  Database: SQLite ({DATABASE_PATH})")
+print("  Connecting...")
 try:
     init_db(DATABASE_PATH)
-    print("Database connected successfully!")
+    print("  ✅ Database connected and tables ready!")
 except Exception as e:
-    print(f"WARNING: Database init failed: {e}", file=sys.stderr)
-    print("App will start but database-dependent features may not work.", file=sys.stderr)
+    print(f"  ❌ Database init failed: {e}", file=sys.stderr)
+    print(f"  ⚠️  App will start but database features may not work.", file=sys.stderr)
+    print(f"  💡 Check that DATABASE_URL is set correctly in Render env.", file=sys.stderr)
+print("=" * 50)
 
 
 def login_required(f):
@@ -268,6 +295,7 @@ def signup():
                 (username, password_hash))
             conn.commit()
             session['user_id'] = lastrowid(cursor)
+            session.permanent = True  # 👈 Keeps you logged in for 30 days
             return redirect('/myshows')
         except Exception:
             flash("Username already taken.", "error")
@@ -277,7 +305,7 @@ def signup():
     except Exception as e:
         logger.error(f"SIGNUP ERROR: {e}")
         logger.error(traceback.format_exc())
-        flash("An error occurred. Please try again.", "error")
+        flash("Could not create account. Check Render logs for details.", "error")
         return render_template('signup.html', username=username)
 
 
@@ -302,6 +330,7 @@ def login():
 
             if user and check_password_hash(user[1], password):
                 session['user_id'] = user[0]
+                session.permanent = True  # 👈 Keeps you logged in for 30 days
                 return redirect('/myshows')
             else:
                 flash("Invalid username or password.", "error")
@@ -309,7 +338,7 @@ def login():
         except Exception as e:
             logger.error(f"LOGIN ERROR: {e}")
             logger.error(traceback.format_exc())
-            flash("An error occurred. Please try again.", "error")
+            flash(f"Could not log in. Check Render logs for details.", "error")
             return redirect('/login')
 
     return render_template('login.html')
