@@ -2,7 +2,8 @@
 
 Track your TV shows and movies — what you've watched, what you're watching, and what's next.
 
-**Live demo:** [tv-tracker-gjti.onrender.com](https://tv-tracker-gjti.onrender.com)
+**Live demo:** 
+https://joyal.pythonanywhere.com
 
 ---
 
