@@ -16,7 +16,7 @@ from markupsafe import escape
 logging.basicConfig(level=logging.ERROR, stream=sys.stdout, force=True)
 logger = logging.getLogger(__name__)
 
-from database import init_db, get_conn, use_pg, exe, exemany, lastrowid
+from database import init_db, get_conn, exe, exemany, lastrowid
 
 # Load .env from the same directory as this file (works from any working directory)
 load_dotenv(Path(__file__).parent / '.env')
@@ -133,22 +133,17 @@ def validate_csrf_token(token):
 
 app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
-# Initialize database on startup (fail gracefully on Render if DB is down)
+# Initialize database on startup
 print("=" * 50)
 print("  Starting TV Tracker...")
 print("=" * 50)
-if use_pg():
-    print(f"  Database: PostgreSQL (via DATABASE_URL)")
-else:
-    print(f"  Database: SQLite ({DATABASE_PATH})")
+print(f"  Database: SQLite ({DATABASE_PATH})")
 print("  Connecting...")
 try:
     init_db(DATABASE_PATH)
     print("  ✅ Database connected and tables ready!")
 except Exception as e:
     print(f"  ❌ Database init failed: {e}", file=sys.stderr)
-    print(f"  ⚠️  App will start but database features may not work.", file=sys.stderr)
-    print(f"  💡 Check that DATABASE_URL is set correctly in Render env.", file=sys.stderr)
 print("=" * 50)
 
 
@@ -162,10 +157,13 @@ def login_required(f):
     return decorated
 
 
-# ── Helper: get total episode count for a show ─────────────────────
+# ── Helpers: episode counts ─────────────────────────────────────
+
 def get_show_episode_count(show_id):
-    """Fetch & cache total episode count for a TV show.
+    """Fetch total episode count for a TV show from TMDB.
     Returns (episode_count, show_data_dict).
+    Always fetches fresh — don't cache because episode counts
+    change for ongoing shows.
     """
     data = tmdb_get(
         f"https://api.themoviedb.org/3/tv/{show_id}",
@@ -189,6 +187,37 @@ def get_season_episode_count(show_id, season_number):
     if not data:
         return 0
     return len(data.get("episodes", []))
+
+
+def get_season_episode_data(show_id, season_number):
+    """Get full episode list for a season from TMDB.
+    Returns list of {episode_number, name} dicts.
+    """
+    data = tmdb_get(
+        f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}",
+        {"api_key": API_KEY}
+    )
+    if not data or not data.get("episodes"):
+        return []
+    return [{"episode_number": e["episode_number"], "name": e.get("name", f"Episode {e['episode_number']}")} for e in data["episodes"]]
+
+
+def _update_cached_total_episodes(show_id, user_id):
+    """Update the cached total_episodes in the shows table for a given show+user.
+    Called after any bulk mark operation so progress bar stays accurate.
+    Returns the total, or 0 if TMDB couldn't be reached.
+    """
+    total, _ = get_show_episode_count(show_id)
+    if total > 0:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'UPDATE shows SET total_episodes=? WHERE tmdb_id=? AND user_id=?', (total, show_id, user_id))
+            conn.commit()
+        finally:
+            conn.close()
+        return total
+    return 0
 
 
 # ── Helper: build poster / backdrop URLs ────────────────────────────
@@ -301,15 +330,14 @@ def signup():
         conn = get_conn()
         try:
             cursor = conn.cursor()
-            id_suffix = " RETURNING id" if use_pg() else ""
             exe(cursor,
-                f'INSERT INTO users (username, password_hash) VALUES (?, ?){id_suffix}',
+                'INSERT INTO users (username, password_hash) VALUES (?, ?)',
                 (username, password_hash))
             conn.commit()
             user_id = lastrowid(cursor)
             session['user_id'] = user_id
             session['username'] = username
-            session.permanent = True  # 👈 Keeps you logged in for 30 days
+            session.permanent = True
             return redirect('/myshows')
         except Exception:
             flash("Username already taken.", "error")
@@ -410,7 +438,6 @@ def add_show(show_id):
             if cursor.fetchone():
                 flash(f"{escape(show['name'])} is already in your shows.", "info")
             else:
-                # Cache the total episode count in the database so MyShows doesn't need TMDB calls
                 total_ep, _ = get_show_episode_count(show["id"])
                 exe(cursor, '''
                     INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes)
@@ -464,7 +491,7 @@ def add_movie(movie_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  MY SHOWS
+#  MY SHOWS  🐛 FIXED: Always use fresh TMDB totals
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/myshows')
 @login_required
@@ -474,16 +501,14 @@ def my_shows():
         try:
             cursor = conn.cursor()
             exe(cursor, '''
-                SELECT tmdb_id, name, poster_path, status, first_air_date, COALESCE(total_episodes, 0)
+                SELECT tmdb_id, name, poster_path, status, first_air_date
                 FROM shows WHERE user_id=? AND status != 'Movie'
             ''', (session['user_id'],))
             shows = cursor.fetchall()
 
             shows_with_progress = []
             for show_row in shows:
-                # show_row = (tmdb_id, name, poster_path, status, first_air_date, total_episodes)
                 show_id = show_row[0]
-                total_episodes = show_row[5] or 0
 
                 exe(cursor, '''
                     SELECT COUNT(*) FROM watched_episodes 
@@ -491,18 +516,28 @@ def my_shows():
                 ''', (show_id, session['user_id']))
                 watched_count = cursor.fetchone()[0]
 
-                # Use cached total_episodes from DB to avoid TMDB API calls on every load
-                if not total_episodes:
-                    total_episodes, show_data = get_show_episode_count(show_id)
-                else:
-                    show_data = None
+                # 🐛 FIX: Always fetch fresh total_episodes from TMDB
+                # The old code used the cached value from the DB, which goes stale
+                # for ongoing shows that get new seasons/episodes.
+                total_episodes, show_data = get_show_episode_count(show_id)
+
+                # Also update the cached value in DB so it stays in sync
+                if total_episodes > 0:
+                    exe(cursor, 'UPDATE shows SET total_episodes=? WHERE tmdb_id=? AND user_id=?',
+                        (total_episodes, show_id, session['user_id']))
 
                 rating = show_data.get("vote_average", 0) if show_data else 0
 
-                percent = int((watched_count / total_episodes) * 100) if total_episodes else 0
+                # 🐛 FIX: Clamp percentage to 100% max (prevent overflow from incorrect data)
+                if total_episodes > 0:
+                    percent = min(int((watched_count / total_episodes) * 100), 100)
+                else:
+                    percent = 0
 
-                # Build tuple: first 5 DB cols + (watched_count, total_episodes, percent, rating)
-                shows_with_progress.append(show_row[:5] + (watched_count, total_episodes, percent, rating))
+                shows_with_progress.append(show_row + (watched_count, total_episodes, percent, rating))
+
+            conn.commit()
+
         finally:
             conn.close()
 
@@ -669,6 +704,91 @@ def show_detail(show_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  API: WATCHED EPISODES  — for inline episode tracker
+# ═══════════════════════════════════════════════════════════════════
+@app.route('/api/show/<int:show_id>/watched')
+@login_required
+def api_show_watched(show_id):
+    """Return the set of watched (season, episode) pairs for the current user + show.
+    Used by the inline episode tracker on show_detail.html.
+    """
+    user_id = session['user_id']
+    try:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, '''SELECT season_number, episode_number FROM watched_episodes
+                           WHERE show_tmdb_id=? AND user_id=?''', (show_id, user_id))
+            watched = [{"season": row[0], "episode": row[1]} for row in cursor.fetchall()]
+
+            # Also get watched count per season for progress
+            exe(cursor, '''SELECT season_number, COUNT(*) FROM watched_episodes
+                           WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
+                           GROUP BY season_number''', (show_id, user_id))
+            season_counts = {row[0]: row[1] for row in cursor.fetchall()}
+        finally:
+            conn.close()
+
+        return jsonify({
+            "watched": watched,
+            "season_counts": season_counts,
+        })
+    except Exception as e:
+        logger.error(f"API WATCHED ERROR ({show_id}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": "Could not fetch watched data"}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  API: SEASON EPISODES (proxied from TMDB — no API key exposed!)
+# ═══════════════════════════════════════════════════════════════════
+@app.route('/api/show/<int:show_id>/season/<int:season_number>')
+@login_required
+def api_season_episodes(show_id, season_number):
+    """Return a season's episode list from TMDB with watched status
+    merged in. Used by the inline episode tracker on show_detail.html.
+    """
+    user_id = session['user_id']
+
+    # Fetch season data from TMDB via backend (no API key leak)
+    season_data = tmdb_get(
+        f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}",
+        {"api_key": API_KEY}
+    )
+    if not season_data or not season_data.get("episodes"):
+        return jsonify({"error": "Could not fetch season data", "episodes": []}), 404
+
+    # Get watched episodes for this season
+    try:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, '''SELECT episode_number FROM watched_episodes
+                           WHERE show_tmdb_id=? AND season_number=? AND user_id=?''',
+                (show_id, season_number, user_id))
+            watched_set = {row[0] for row in cursor.fetchall()}
+        finally:
+            conn.close()
+
+        episodes = []
+        for ep in season_data["episodes"]:
+            episodes.append({
+                "episode_number": ep["episode_number"],
+                "name": ep.get("name", f"Episode {ep['episode_number']}"),
+                "watched": ep["episode_number"] in watched_set,
+            })
+
+        return jsonify({
+            "season_number": season_number,
+            "episodes": episodes,
+        })
+    except Exception as e:
+        logger.error(f"API SEASON ERROR ({show_id}/{season_number}): {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"error": "Database error"}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  SEASON DETAIL
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/show/<int:show_id>/season/<int:season_number>')
@@ -745,8 +865,12 @@ def mark_watched(show_id, season_number, episode_number):
         finally:
             conn.close()
 
-        total_episodes, _ = get_show_episode_count(show_id)
-        finished = (watched_count == total_episodes and total_episodes > 0 and status == "watched")
+        # 🐛 FIX: Also update the cached total_episodes so progress stays in sync
+        total_episodes = _update_cached_total_episodes(show_id, user_id)
+        if total_episodes == 0:
+            total_episodes, _ = get_show_episode_count(show_id)
+
+        finished = (watched_count == total_episodes and total_episodes > 0)
 
         total_in_season = get_season_episode_count(show_id, season_number)
         is_last_episode = (episode_number == total_in_season and total_in_season > 0)
@@ -756,6 +880,8 @@ def mark_watched(show_id, season_number, episode_number):
             "finished": finished,
             "is_last_episode": is_last_episode,
             "season_number": season_number,
+            "watched_count": watched_count,
+            "total_episodes": total_episodes,
         })
     except Exception as e:
         logger.error(f"MARK WATCHED ERROR ({show_id}/{season_number}/{episode_number}): {e}")
@@ -765,6 +891,7 @@ def mark_watched(show_id, season_number, episode_number):
 
 # ═══════════════════════════════════════════════════════════════════
 #  MARK SEASON WATCHED (bulk within a single season)
+#  🐛 FIXED: Now updates cached total_episodes after marking
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/mark_season_watched/<int:show_id>/<int:season_number>/<int:up_to_episode>', methods=['POST'])
 @login_required
@@ -784,6 +911,10 @@ def mark_season_watched(show_id, season_number, up_to_episode):
             conn.commit()
         finally:
             conn.close()
+
+        # 🐛 FIX: Update cached total_episodes after bulk mark
+        _update_cached_total_episodes(show_id, user_id)
+
         return jsonify({"status": "ok", "marked_up_to": up_to_episode})
     except Exception as e:
         logger.error(f"MARK SEASON WATCHED ERROR ({show_id}/{season_number}/{up_to_episode}): {e}")
@@ -792,7 +923,9 @@ def mark_season_watched(show_id, season_number, up_to_episode):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  MARK ALL PREVIOUS SEASONS (multi-season fix!)
+#  MARK ALL PREVIOUS SEASONS
+#  🐛 FIXED: Now uses actual season episode data instead of
+#  episode_count from the show endpoint, and updates cached total.
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/mark_previous_seasons/<int:show_id>/<int:season_number>', methods=['POST'])
 @login_required
@@ -816,9 +949,12 @@ def mark_previous_seasons(show_id, season_number):
             for season in show_data.get("seasons", []):
                 sn = season["season_number"]
                 if sn > 0 and sn < season_number:
-                    ep_count = season.get("episode_count", 0)
-                    for ep in range(1, ep_count + 1):
-                        episodes.append((show_id, sn, ep, user_id))
+                    # 🐛 FIX: Get actual episode data from the season endpoint
+                    # instead of relying on episode_count from show endpoint,
+                    # which can be inaccurate for ongoing shows.
+                    season_episodes = get_season_episode_data(show_id, sn)
+                    for ep in season_episodes:
+                        episodes.append((show_id, sn, ep["episode_number"], user_id))
             if episodes:
                 exemany(cursor, '''
                     INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
@@ -827,7 +963,11 @@ def mark_previous_seasons(show_id, season_number):
             conn.commit()
         finally:
             conn.close()
-        return jsonify({"status": "ok", "marked_previous_seasons_up_to": season_number - 1})
+
+        # 🐛 FIX: Update cached total_episodes after bulk mark
+        _update_cached_total_episodes(show_id, user_id)
+
+        return jsonify({"status": "ok", "marked_previous_seasons_up_to": season_number - 1, "marked_count": len(episodes)})
     except Exception as e:
         logger.error(f"MARK PREVIOUS SEASONS ERROR ({show_id}/{season_number}): {e}")
         logger.error(traceback.format_exc())
@@ -836,6 +976,7 @@ def mark_previous_seasons(show_id, season_number):
 
 # ═══════════════════════════════════════════════════════════════════
 #  MARK ALL SEASONS WATCHED
+#  🐛 FIXED: Now uses actual season episode data and updates cached total.
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/mark_all_seasons_watched/<int:show_id>', methods=['POST'])
 @login_required
@@ -859,9 +1000,10 @@ def mark_all_seasons_watched(show_id):
             for season in show_data.get("seasons", []):
                 sn = season["season_number"]
                 if sn > 0:
-                    ep_count = season.get("episode_count", 0)
-                    for ep in range(1, ep_count + 1):
-                        episodes.append((show_id, sn, ep, user_id))
+                    # 🐛 FIX: Use actual episode data from the season endpoint
+                    season_episodes = get_season_episode_data(show_id, sn)
+                    for ep in season_episodes:
+                        episodes.append((show_id, sn, ep["episode_number"], user_id))
             if episodes:
                 exemany(cursor, '''
                     INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
@@ -870,6 +1012,10 @@ def mark_all_seasons_watched(show_id):
             conn.commit()
         finally:
             conn.close()
+
+        # 🐛 FIX: Update cached total_episodes after bulk mark
+        _update_cached_total_episodes(show_id, user_id)
+
         return jsonify({"status": "ok", "marked_count": len(episodes)})
     except Exception as e:
         logger.error(f"MARK ALL SEASONS WATCHED ERROR ({show_id}): {e}")
