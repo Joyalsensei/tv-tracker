@@ -1,220 +1,167 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ movie.title }} - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 30px;
-            overflow-x: hidden;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        button { padding: 8px 14px; font-size: 15px; border-radius: 6px; border: none; cursor: pointer; transition: background .2s; }
+{% extends "base.html" %}
+{% block title %}{{ movie.title }} - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    .detail-header { display: flex; gap: 30px; margin-bottom: 30px; flex-wrap: wrap; }
+    .poster { border-radius: 10px; max-width: 250px; width: 100%; aspect-ratio: 2/3; object-fit: cover; }
+    .info { flex: 1; min-width: 280px; }
+    .info h1 { font-size: 32px; margin: 0 0 8px; }
+    .info .tagline { color: var(--text-secondary); font-size: 16px; margin-bottom: 12px; font-style: italic; }
+    .info .overview { font-size: 15px; line-height: 1.7; color: var(--text-secondary); margin-bottom: 16px; }
+    .info .meta-row { display: flex; gap: 20px; flex-wrap: wrap; font-size: 14px; margin-bottom: 16px; }
+    .info .meta-row span { color: var(--text-dim); }
+    .info .meta-row strong { color: var(--text); }
 
-        .back-link { display: inline-block; margin-bottom: 20px; color: #999; font-size: 14px; padding: 8px 0; }
-        .back-link:hover { color: #fff; }
+    .providers-section { margin: 24px 0; }
+    .providers-section h3 { font-size: 15px; margin-bottom: 10px; color: var(--text-secondary); }
+    .provider-list { display: flex; gap: 10px; flex-wrap: wrap; }
+    .provider-badge { display: flex; align-items: center; gap: 8px; background: var(--bg-elevated); padding: 8px 14px; border-radius: var(--radius); border: 1px solid var(--border); }
+    .provider-badge img { width: 24px; height: 24px; border-radius: 4px; }
+    .provider-badge span { font-size: 13px; }
 
-        .detail-header { display: flex; gap: 30px; margin-bottom: 30px; flex-wrap: wrap; }
-        .poster { border-radius: 10px; max-width: 250px; width: 100%; aspect-ratio: 2/3; object-fit: cover; }
-        .info { flex: 1; min-width: 280px; }
-        .info h1 { font-size: 36px; margin: 0 0 8px; }
-        .info .tagline { color: #999; font-size: 16px; margin-bottom: 12px; font-style: italic; }
-        .info .overview { font-size: 15px; line-height: 1.7; color: #ccc; margin-bottom: 16px; }
-        .info .meta-row { display: flex; gap: 20px; flex-wrap: wrap; font-size: 14px; margin-bottom: 16px; }
-        .info .meta-row span { color: #aaa; }
-        .info .meta-row strong { color: #eee; }
-
-        /* Ratings */
-        .rating-section { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
-        .rating-stars { font-size: 22px; letter-spacing: 2px; }
-        .rating-number { font-size: 28px; font-weight: 700; color: #f5c518; }
-        .rating-votes { font-size: 13px; color: #999; }
-        .rating-bar-bg { width: 200px; height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
-        .rating-bar-fill { height: 100%; background: #f5c518; border-radius: 4px; transition: width .5s; }
-
-        /* Watch Providers */
-        .providers-section { margin: 24px 0; }
-        .providers-section h3 { font-size: 16px; margin-bottom: 10px; color: #ccc; }
-        .provider-list { display: flex; gap: 12px; flex-wrap: wrap; }
-        .provider-badge { display: flex; align-items: center; gap: 8px; background: #222; padding: 8px 14px; border-radius: 8px; }
-        .provider-badge img { width: 28px; height: 28px; border-radius: 4px; }
-        .provider-badge span { font-size: 13px; }
-
-        .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
-        .watch-btn {
-            display: inline-flex; align-items: center; gap: 8px;
-            padding: 12px 22px; background: #2ecc71; color: white;
-            border: none; border-radius: 6px; cursor: pointer; font-size: 15px; transition: background .2s;
-        }
-        .watch-btn.watched { background: #555; }
-        .watch-btn:hover { filter: brightness(1.15); }
-        .actions a button { font-size: 14px; padding: 10px 18px; }
-
-        /* Recommendations / Similar */
-        .shelf { margin: 30px 0; }
-        .shelf h2 { font-size: 20px; margin-bottom: 12px; }
-        .shelf-scroll {
-            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
-            -webkit-overflow-scrolling: touch;
-        }
-        .shelf-scroll::-webkit-scrollbar { height: 6px; }
-        .shelf-scroll::-webkit-scrollbar-track { background: #222; border-radius: 3px; }
-        .shelf-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-        .mini-card {
-            flex: 0 0 auto; width: 130px; text-align: center;
-            transition: transform .2s; border-radius: 6px; overflow: hidden;
-        }
-        .mini-card:hover { transform: scale(1.06); }
-        .mini-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 6px; }
-        .mini-card p { font-size: 12px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .mini-card .mini-rating { font-size: 11px; color: #f5c518; }
-
-        @media (max-width: 600px) {
-            body { padding: 16px; }
-            .detail-header { flex-direction: column; align-items: center; text-align: center; }
-            .poster { max-width: 160px; }
-            .info h1 { font-size: 24px; }
-            .rating-section { justify-content: center; flex-wrap: wrap; }
-            .rating-bar-bg { width: 100%; max-width: 200px; margin: 0 auto; }
-            .actions { justify-content: center; }
-            .mini-card { width: 110px; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
-
-    <a href="/mymovies" class="back-link">← Back to My Movies</a>
-
-    <div class="detail-header">
-        {% if movie.poster_path %}
-        <img class="poster" src="https://image.tmdb.org/t/p/w300{{ movie.poster_path }}" alt="{{ movie.title }}">
-        {% else %}
-        <div class="poster" style="background:#333;display:flex;align-items:center;justify-content:center;color:#666;">No Poster</div>
-        {% endif %}
-        <div class="info">
-            <h1>{{ movie.title }}</h1>
-            {% if movie.tagline %}<p class="tagline">{{ movie.tagline }}</p>{% endif %}
-
-            <!-- ⭐ Ratings -->
-            <div class="rating-section">
-                <span class="rating-number">{{ "%.1f"|format(rating|float) }}</span>
-                <span class="rating-stars">
-                    {% set stars = (rating|float)|round(0, 'floor')|int %}
-                    {% for i in range(10) %}
-                        {% if i < stars %}★{% else %}☆{% endif %}
-                    {% endfor %}
-                </span>
-                <span class="rating-votes">({{ vote_count }} votes)</span>
-            </div>
-            <div class="rating-bar-bg">
-                <div class="rating-bar-fill" style="width: {{ (rating|float / 10) * 100 }}%;"></div>
-            </div>
-
-            <!-- ℹ️ Meta -->
-            <div class="meta-row">
-                <span><strong>Release date:</strong> {{ movie.release_date }}</span>
-                {% if movie.runtime %}
-                <span><strong>Runtime:</strong> {{ movie.runtime }} min</span>
-                {% endif %}
-                {% if movie.genres %}
-                <span><strong>Genres:</strong> {{ movie.genres|map(attribute='name')|join(', ') }}</span>
-                {% endif %}
-            </div>
-
-            <p class="overview">{{ movie.overview }}</p>
-
-            <!-- 🎬 Where to Watch -->
-            {% if watch_providers %}
-            <div class="providers-section">
-                <h3>📺 Available on</h3>
-                <div class="provider-list">
-                    {% for provider in watch_providers %}
-                    <div class="provider-badge">
-                        <img src="https://image.tmdb.org/t/p/w45{{ provider.logo_path }}" alt="{{ provider.provider_name }}">
-                        <span>{{ provider.provider_name }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
-
-            <div class="actions">
-                <button class="watch-btn{% if is_watched %} watched{% endif %}" id="watchBtn" onclick="toggleWatch({{ movie.id }})">
-                    {% if is_watched %}✓ Watched{% else %}✓ Mark as Watched{% endif %}
-                </button>
-                <a href="/add_movie/{{ movie.id }}"><button>+ Add to My Movies</button></a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Recommendations -->
-    {% if recommendations %}
-    <div class="shelf">
-        <h2>🎯 You Might Also Like</h2>
-        <div class="shelf-scroll">
-            {% for rec in recommendations %}
-            <a href="/show/{{ rec.id }}" class="mini-card">
-                {% if rec.poster_path %}
-                <img src="https://image.tmdb.org/t/p/w200{{ rec.poster_path }}" alt="{{ rec.title or rec.name }}" loading="lazy">
-                {% else %}
-                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:6px;"></div>
-                {% endif %}
-                <p>{{ rec.title or rec.name }}</p>
-                <span class="mini-rating">★ {{ "%.1f"|format(rec.vote_average|float) if rec.vote_average else "N/A" }}</span>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Similar Movies -->
-    {% if similar %}
-    <div class="shelf">
-        <h2>🔗 Similar Movies</h2>
-        <div class="shelf-scroll">
-            {% for sim in similar %}
-            <a href="/show/{{ sim.id }}" class="mini-card">
-                {% if sim.poster_path %}
-                <img src="https://image.tmdb.org/t/p/w200{{ sim.poster_path }}" alt="{{ sim.title or sim.name }}" loading="lazy">
-                {% else %}
-                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:6px;"></div>
-                {% endif %}
-                <p>{{ sim.title or sim.name }}</p>
-                <span class="mini-rating">★ {{ "%.1f"|format(sim.vote_average|float) if sim.vote_average else "N/A" }}</span>
-            </a>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    <script>
-    function toggleWatch(movieId) {
-        const formData = new FormData();
-        formData.append('_csrf_token', '{{ csrf_token() }}');
-        fetch('/watch_movie/' + movieId, {method: 'POST', body: formData})
-            .then(res => res.json())
-            .then(data => {
-                const btn = document.getElementById('watchBtn');
-                if (data.status === 'watched') {
-                    btn.textContent = '✓ Watched';
-                    btn.classList.add('watched');
-                } else {
-                    btn.textContent = '✓ Mark as Watched';
-                    btn.classList.remove('watched');
-                }
-            })
-            .catch(err => console.error('Error:', err));
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
+    .watch-btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 10px 20px; background: var(--accent-green); color: white;
+        border: none; border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 600;
+        transition: all var(--transition);
     }
-    </script>
-</body>
-</html>
+    .watch-btn.watched { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border-light); }
+    .watch-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+    @media (max-width: 768px) {
+        .detail-header { flex-direction: column; align-items: center; text-align: center; }
+        .poster { max-width: 160px; }
+        .info h1 { font-size: 24px; }
+        .actions { justify-content: center; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/mymovies">My Movies</a>
+    <span class="sep">›</span>
+    <span>{{ movie.title }}</span>
+</div>
+
+<div class="detail-header">
+    {% if movie.poster_path %}
+    <img class="poster" src="https://image.tmdb.org/t/p/w300{{ movie.poster_path }}" alt="{{ movie.title }}">
+    {% else %}
+    <div class="poster" style="background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;color:var(--text-dim);">No Poster</div>
+    {% endif %}
+    <div class="info">
+        <h1>{{ movie.title }}</h1>
+        {% if movie.tagline %}<p class="tagline">{{ movie.tagline }}</p>{% endif %}
+
+        <div class="rating-section">
+            <span class="rating-number">{{ "%.1f"|format(rating|float) }}</span>
+            <span class="rating-stars">
+                {% set stars = (rating|float)|round(0, 'floor')|int %}
+                {% for i in range(10) %}
+                    {% if i < stars %}★{% else %}☆{% endif %}
+                {% endfor %}
+            </span>
+            <span style="font-size:13px;color:var(--text-dim);">({{ vote_count }} votes)</span>
+        </div>
+        <div class="rating-bar-bg">
+            <div class="rating-bar-fill" style="width: {{ (rating|float / 10) * 100 }}%;"></div>
+        </div>
+
+        <div class="meta-row">
+            <span><strong>Release:</strong> {{ movie.release_date }}</span>
+            {% if movie.runtime %}
+            <span><strong>Runtime:</strong> {{ movie.runtime }} min</span>
+            {% endif %}
+            {% if movie.genres %}
+            <span><strong>Genres:</strong> {{ movie.genres|map(attribute='name')|join(', ') }}</span>
+            {% endif %}
+        </div>
+
+        <p class="overview">{{ movie.overview }}</p>
+
+        {% if watch_providers %}
+        <div class="providers-section">
+            <h3>📺 Available on</h3>
+            <div class="provider-list">
+                {% for provider in watch_providers %}
+                <div class="provider-badge">
+                    <img src="https://image.tmdb.org/t/p/w45{{ provider.logo_path }}" alt="{{ provider.provider_name }}">
+                    <span>{{ provider.provider_name }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="actions">
+            <button class="watch-btn{% if is_watched %} watched{% endif %}" id="watchBtn" onclick="toggleWatch({{ movie.id }})">
+                {% if is_watched %}✓ Watched{% else %}✓ Mark as Watched{% endif %}
+            </button>
+            <a href="/add_movie/{{ movie.id }}"><button class="btn btn-primary btn-sm">+ Add to My Movies</button></a>
+        </div>
+    </div>
+</div>
+
+{% if recommendations %}
+<div class="shelf">
+    <div class="shelf-header"><h2>🎯 You Might Also Like</h2></div>
+    <div class="shelf-scroll">
+        {% for rec in recommendations %}
+        <a href="/show/{{ rec.id }}" class="shelf-card">
+            {% if rec.poster_path %}
+            <img src="https://image.tmdb.org/t/p/w200{{ rec.poster_path }}" alt="{{ rec.title or rec.name }}" loading="lazy">
+            {% else %}
+            <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);"></div>
+            {% endif %}
+            <div class="shelf-info">
+                <div class="shelf-title">{{ rec.title or rec.name }}</div>
+                <div class="shelf-meta"><span>★ {{ "%.1f"|format(rec.vote_average|float) if rec.vote_average else "N/A" }}</span></div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if similar %}
+<div class="shelf">
+    <div class="shelf-header"><h2>🔗 Similar Movies</h2></div>
+    <div class="shelf-scroll">
+        {% for sim in similar %}
+        <a href="/show/{{ sim.id }}" class="shelf-card">
+            {% if sim.poster_path %}
+            <img src="https://image.tmdb.org/t/p/w200{{ sim.poster_path }}" alt="{{ sim.title or sim.name }}" loading="lazy">
+            {% else %}
+            <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);"></div>
+            {% endif %}
+            <div class="shelf-info">
+                <div class="shelf-title">{{ sim.title or sim.name }}</div>
+                <div class="shelf-meta"><span>★ {{ "%.1f"|format(sim.vote_average|float) if sim.vote_average else "N/A" }}</span></div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<script>
+function toggleWatch(movieId) {
+    const formData = new FormData();
+    formData.append('_csrf_token', '{{ csrf_token() }}');
+    fetch('/watch_movie/' + movieId, {method: 'POST', body: formData})
+        .then(res => res.json())
+        .then(data => {
+            const btn = document.getElementById('watchBtn');
+            if (data.status === 'watched') {
+                btn.textContent = '✓ Watched';
+                btn.classList.add('watched');
+                showToast('Movie marked as watched!', 'success');
+            } else {
+                btn.textContent = '✓ Mark as Watched';
+                btn.classList.remove('watched');
+            }
+        }).catch(err => console.error('Error:', err));
+}
+</script>
+{% endblock %}

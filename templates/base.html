@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>{% block title %}TV Tracker{% endblock %}</title>
+    <style>
+        /* ── CSS Variables ── */
+        :root {
+            --bg: #0f0f0f;
+            --bg-card: #1a1a1a;
+            --bg-hover: #242424;
+            --bg-elevated: #222;
+            --text: #eee;
+            --text-secondary: #999;
+            --text-dim: #666;
+            --accent: #e50914;
+            --accent-hover: #f40612;
+            --accent-green: #2ecc71;
+            --accent-yellow: #f5c518;
+            --accent-blue: #3498db;
+            --border: #2a2a2a;
+            --border-light: #333;
+            --radius: 8px;
+            --radius-lg: 12px;
+            --shadow: 0 4px 20px rgba(0,0,0,.4);
+            --transition: .2s ease;
+            --nav-height: 60px;
+            --max-width: 1400px;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', -apple-system, Arial, sans-serif;
+            padding-top: var(--nav-height);
+            padding-bottom: 40px;
+            overflow-x: hidden;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+        a { color: #66d9ef; text-decoration: none; transition: color var(--transition); }
+        a:hover { color: #fff; }
+        img { max-width: 100%; }
+
+        /* ── Navigation ── */
+        .navbar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+            height: var(--nav-height);
+            display: flex; align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            background: rgba(15,15,15,.92);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            transition: background var(--transition);
+        }
+        .navbar-left { display: flex; align-items: center; gap: 32px; }
+        .navbar .logo {
+            font-size: 22px; font-weight: 800;
+            color: var(--accent); letter-spacing: -.5px;
+        }
+        .navbar .logo span { color: var(--text); font-weight: 300; }
+
+        .nav-links { display: flex; gap: 4px; align-items: center; }
+        .nav-links a {
+            color: var(--text-secondary); font-size: 14px;
+            padding: 8px 14px; border-radius: var(--radius);
+            transition: all var(--transition);
+            position: relative;
+        }
+        .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.06); }
+        .nav-links a.active {
+            color: #fff;
+            background: rgba(229,9,20,.15);
+        }
+        .nav-links a.active::after {
+            content: '';
+            position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
+            width: 20px; height: 2px; background: var(--accent); border-radius: 1px;
+        }
+
+        .navbar-right { display: flex; align-items: center; gap: 12px; }
+        .navbar-right .username {
+            color: var(--text-secondary); font-size: 13px;
+            padding: 6px 12px; background: rgba(255,255,255,.05);
+            border-radius: 20px; white-space: nowrap;
+        }
+        .navbar-right .username .avatar {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: var(--accent); color: #fff;
+            font-size: 12px; font-weight: 700; margin-right: 6px;
+        }
+        .btn-logout {
+            padding: 6px 14px; font-size: 13px; border-radius: 20px;
+            border: 1px solid var(--border-light); background: transparent;
+            color: var(--text-secondary); cursor: pointer;
+            transition: all var(--transition);
+        }
+        .btn-logout:hover { border-color: var(--accent); color: var(--accent); background: rgba(229,9,20,.08); }
+        .btn-signup {
+            padding: 7px 18px; font-size: 13px; border-radius: 20px;
+            border: none; background: var(--accent); color: #fff;
+            cursor: pointer; transition: all var(--transition); font-weight: 600;
+        }
+        .btn-signup:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-login {
+            padding: 7px 18px; font-size: 13px; border-radius: 20px;
+            border: 1px solid var(--border-light); background: transparent;
+            color: var(--text); cursor: pointer;
+            transition: all var(--transition);
+        }
+        .btn-login:hover { border-color: var(--text); }
+
+        /* ── Hamburger ── */
+        .hamburger {
+            display: none; flex-direction: column; gap: 4px;
+            cursor: pointer; padding: 6px; background: none; border: none;
+        }
+        .hamburger span {
+            display: block; width: 22px; height: 2px;
+            background: var(--text-secondary); border-radius: 2px;
+            transition: all .3s ease;
+        }
+        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); background: var(--accent); }
+        .hamburger.active span:nth-child(2) { opacity: 0; }
+        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); background: var(--accent); }
+
+        /* ── Mobile Drawer ── */
+        .drawer-overlay {
+            display: none; position: fixed; inset: 0; z-index: 998;
+            background: rgba(0,0,0,.5);
+            opacity: 0; transition: opacity .3s ease;
+        }
+        .drawer-overlay.open { display: block; opacity: 1; }
+
+        .drawer {
+            position: fixed; top: 0; left: 0; bottom: 0; z-index: 999;
+            width: 280px; max-width: 80vw;
+            background: var(--bg); border-right: 1px solid var(--border);
+            transform: translateX(-100%); transition: transform .3s cubic-bezier(.22,1,.36,1);
+            padding: 20px 0; overflow-y: auto;
+        }
+        .drawer.open { transform: translateX(0); }
+        .drawer-header {
+            padding: 0 20px 16px; border-bottom: 1px solid var(--border);
+            margin-bottom: 8px;
+        }
+        .drawer-header .logo { font-size: 20px; font-weight: 800; color: var(--accent); }
+        .drawer-user {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 20px; margin: 0 12px; border-radius: var(--radius);
+            background: rgba(255,255,255,.04); margin-bottom: 8px;
+        }
+        .drawer-user .avatar {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: var(--accent); color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 14px;
+        }
+        .drawer a {
+            display: flex; align-items: center; gap: 12px;
+            padding: 14px 24px; color: var(--text-secondary);
+            font-size: 15px; transition: all var(--transition);
+            border-left: 3px solid transparent;
+        }
+        .drawer a:hover { background: rgba(255,255,255,.04); color: var(--text); }
+        .drawer a.active {
+            background: rgba(229,9,20,.08); color: #fff;
+            border-left-color: var(--accent); font-weight: 600;
+        }
+        .drawer a .icon { font-size: 18px; width: 24px; text-align: center; }
+        .drawer-divider {
+            height: 1px; background: var(--border); margin: 8px 20px;
+        }
+
+        /* ── Toast Notifications ── */
+        .toast-container {
+            position: fixed; top: calc(var(--nav-height) + 12px); right: 16px;
+            z-index: 2000; display: flex; flex-direction: column; gap: 8px;
+            pointer-events: none;
+        }
+        .toast {
+            pointer-events: auto;
+            padding: 14px 20px; border-radius: var(--radius);
+            font-size: 14px; font-weight: 500;
+            box-shadow: var(--shadow);
+            transform: translateX(120%); opacity: 0;
+            transition: all .4s cubic-bezier(.22,1,.36,1);
+            max-width: 380px;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .toast.show { transform: translateX(0); opacity: 1; }
+        .toast.error { background: #c0392b; color: #fff; }
+        .toast.success { background: #1a7a3a; color: #fff; }
+        .toast.info { background: #1a5276; color: #fff; }
+        .toast .toast-icon { font-size: 18px; flex-shrink: 0; }
+
+        /* ── Page Content ── */
+        .page-content {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 24px 32px;
+            animation: fadeIn .3s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+        }
+        .page-header h1 {
+            font-size: 28px; font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .page-header .subtitle {
+            color: var(--text-secondary); font-size: 14px;
+        }
+        .breadcrumb {
+            display: flex; gap: 8px; align-items: center;
+            font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;
+        }
+        .breadcrumb a { color: var(--text-secondary); }
+        .breadcrumb a:hover { color: #fff; }
+        .breadcrumb .sep { color: var(--text-dim); }
+
+        /* ── Section ── */
+        .section-header {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 20px; font-weight: 700; margin-bottom: 16px;
+            padding-bottom: 10px; border-bottom: 1px solid var(--border);
+        }
+        .section-header .count {
+            font-size: 12px; font-weight: 400; color: var(--text-secondary);
+            background: var(--bg-elevated); padding: 2px 10px; border-radius: 12px;
+        }
+
+        /* ── Grid ── */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+            gap: 16px;
+            list-style: none;
+            padding: 0; margin: 0;
+        }
+
+        .card {
+            position: relative;
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: transform .3s ease, box-shadow .3s ease;
+            cursor: pointer;
+        }
+        .card:hover { transform: translateY(-4px) scale(1.02); z-index: 2; }
+        .card a { display: block; color: inherit; }
+        .card-poster {
+            width: 100%; aspect-ratio: 2/3;
+            object-fit: cover; display: block;
+            border-radius: var(--radius);
+            transition: filter .3s ease;
+        }
+        .card:hover .card-poster { filter: brightness(1.1); }
+        .card-poster-placeholder {
+            width: 100%; aspect-ratio: 2/3;
+            background: linear-gradient(135deg, var(--bg-elevated), var(--bg-card));
+            border-radius: var(--radius);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; color: var(--text-dim);
+        }
+        .card-body {
+            padding: 8px 4px 0;
+        }
+        .card-title {
+            font-size: 13px; font-weight: 600;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            color: var(--text);
+        }
+        .card-meta {
+            font-size: 11px; color: var(--text-secondary);
+            display: flex; justify-content: space-between; margin-top: 2px;
+        }
+        .card-rating { color: var(--accent-yellow); }
+        .card-year { color: var(--text-dim); }
+
+        /* Card progress bar */
+        .card-progress {
+            margin-top: 6px;
+        }
+        .card-progress .progress-bg {
+            height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+        }
+        .card-progress .progress-fill {
+            height: 100%; background: var(--accent-yellow);
+            border-radius: 2px; transition: width .5s ease;
+        }
+        .card-progress .progress-text {
+            font-size: 10px; color: var(--text-dim); margin-top: 2px;
+        }
+
+        /* Card overlay (for hover actions) */
+        .card-overlay {
+            position: absolute; top: 0; left: 0; right: 0;
+            padding: 10px;
+            background: linear-gradient(180deg, rgba(0,0,0,.7) 0%, transparent 50%);
+            opacity: 0; transition: opacity .3s ease;
+        }
+        .card:hover .card-overlay { opacity: 1; }
+
+        /* Card status badge */
+        .card-badge {
+            position: absolute; top: 8px; right: 8px;
+            padding: 3px 8px; border-radius: 4px;
+            font-size: 10px; font-weight: 600;
+            background: rgba(0,0,0,.7); color: var(--text);
+            backdrop-filter: blur(4px);
+        }
+
+        /* ── Shelf (horizontal scroll) ── */
+        .shelf { margin-bottom: 32px; }
+        .shelf-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .shelf-header h2 { font-size: 20px; font-weight: 700; }
+        .shelf-scroll {
+            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
+            scroll-behavior: smooth; scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+        }
+        .shelf-scroll::-webkit-scrollbar { height: 4px; }
+        .shelf-scroll::-webkit-scrollbar-track { background: var(--border); border-radius: 2px; }
+        .shelf-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 2px; }
+        .shelf-card {
+            flex: 0 0 auto; width: 140px; scroll-snap-align: start;
+            transition: transform .25s ease;
+            cursor: pointer;
+        }
+        .shelf-card:hover { transform: scale(1.06); z-index: 2; }
+        .shelf-card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: var(--radius); }
+        .shelf-card .shelf-info {
+            padding: 6px 4px 0;
+            font-size: 12px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .shelf-card .shelf-title { color: var(--text); font-weight: 600; }
+        .shelf-card .shelf-meta { color: var(--text-secondary); font-size: 11px; display: flex; justify-content: space-between; }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 10px 20px; font-size: 14px; font-weight: 600;
+            border-radius: var(--radius); border: none;
+            cursor: pointer; transition: all var(--transition);
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-success { background: var(--accent-green); color: #fff; }
+        .btn-success:hover { filter: brightness(1.1); transform: translateY(-1px); }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text); border: 1px solid var(--border-light); }
+        .btn-secondary:hover { background: var(--bg-hover); border-color: var(--text-secondary); }
+        .btn-sm { padding: 6px 14px; font-size: 12px; }
+        .btn-danger { background: transparent; color: #e74c3c; border: 1px solid transparent; }
+        .btn-danger:hover { background: rgba(231,76,60,.1); border-color: rgba(231,76,60,.3); }
+
+        /* ── Inputs ── */
+        input, select, textarea {
+            padding: 10px 14px; font-size: 15px;
+            border-radius: var(--radius); border: 1px solid var(--border-light);
+            background: rgba(255,255,255,.06); color: var(--text);
+            outline: none; transition: all var(--transition);
+        }
+        input:focus, select:focus { border-color: var(--accent); background: rgba(255,255,255,.1); }
+        input::placeholder { color: var(--text-dim); }
+        select { cursor: pointer; }
+
+        /* ── Search Form ── */
+        .search-form {
+            display: flex; gap: 8px; align-items: center;
+            background: rgba(255,255,255,.06);
+            border: 1px solid var(--border-light);
+            border-radius: 24px; padding: 4px;
+            transition: all var(--transition);
+        }
+        .search-form:focus-within { border-color: var(--accent); background: rgba(255,255,255,.1); }
+        .search-form input {
+            flex: 1; border: none; background: transparent;
+            padding: 10px 14px; font-size: 15px;
+        }
+        .search-form input:focus { border: none; background: transparent; }
+        .search-form button {
+            padding: 8px 18px; border-radius: 20px;
+            border: none; background: var(--accent); color: #fff;
+            cursor: pointer; font-weight: 600; font-size: 13px;
+            transition: all var(--transition);
+        }
+        .search-form button:hover { background: var(--accent-hover); }
+
+        /* ── Empty State ── */
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: var(--text-dim);
+        }
+        .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state p { font-size: 15px; }
+        .empty-state .btn { margin-top: 16px; }
+
+        /* ── Skeleton Loader ── */
+        .skeleton {
+            background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-hover) 50%, var(--bg-elevated) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+            border-radius: var(--radius);
+        }
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* ── Stats Card ── */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px; margin-bottom: 28px;
+        }
+        .stat-card {
+            background: var(--bg-card); border-radius: var(--radius-lg);
+            padding: 20px; text-align: center;
+            border: 1px solid var(--border);
+            transition: all var(--transition);
+        }
+        .stat-card:hover { border-color: var(--text-dim); transform: translateY(-2px); }
+        .stat-card .stat-number { font-size: 32px; font-weight: 800; color: var(--accent); }
+        .stat-card .stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; text-transform: uppercase; letter-spacing: .5px; }
+
+        /* ── Tags ── */
+        .tag {
+            display: inline-block; padding: 4px 10px; border-radius: 4px;
+            font-size: 11px; font-weight: 600;
+        }
+        .tag-red { background: rgba(229,9,20,.15); color: var(--accent); }
+        .tag-green { background: rgba(46,204,113,.15); color: var(--accent-green); }
+        .tag-yellow { background: rgba(245,197,24,.15); color: var(--accent-yellow); }
+        .tag-blue { background: rgba(52,152,219,.15); color: var(--accent-blue); }
+
+        /* ── Rating Bar ── */
+        .rating-section {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+        }
+        .rating-number { font-size: 28px; font-weight: 700; color: var(--accent-yellow); }
+        .rating-stars { font-size: 20px; letter-spacing: 2px; color: var(--accent-yellow); }
+        .rating-bar-bg {
+            width: 200px; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+        }
+        .rating-bar-fill { height: 100%; background: var(--accent-yellow); border-radius: 3px; transition: width .5s; }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .navbar { padding: 0 16px; }
+            .nav-links { display: none; }
+            .navbar-right .username { display: none; }
+            .hamburger { display: flex; }
+            .page-content { padding: 16px; }
+            .page-header h1 { font-size: 22px; }
+            .card-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+            .shelf-card { width: 120px; }
+            .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        }
+        @media (max-width: 480px) {
+            .card-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .card-title { font-size: 12px; }
+        }
+
+        /* ── Flash fallback (if JS not working) ── */
+        .flash-fallback { display: none; }
+    </style>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#0f0f0f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/static/icon.svg">
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+
+<!-- ─── Toast Container ─── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ─── Navigation ─── -->
+<nav class="navbar">
+    <div class="navbar-left">
+        <a href="/" class="logo">TV<span>Tracker</span></a>
+        {% if session.user_id %}
+        <div class="nav-links">
+            <a href="/myshows" class="{% if request.path == '/myshows' %}active{% endif %}">My Shows</a>
+            <a href="/upcoming" class="{% if request.path == '/upcoming' %}active{% endif %}">Upcoming</a>
+            <a href="/mymovies" class="{% if request.path == '/mymovies' %}active{% endif %}">My Movies</a>
+            <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}">Stats</a>
+            <a href="/history" class="{% if request.path == '/history' %}active{% endif %}">History</a>
+        </div>
+        {% endif %}
+    </div>
+    {% if session.user_id %}
+    <div class="navbar-right">
+        <span class="username">
+            <span class="avatar">{{ session.get('username', 'U')[0]|upper }}</span>
+            {{ session.get('username', 'User') }}
+        </span>
+        <a href="/logout"><button class="btn-logout">Logout</button></a>
+    </div>
+    {% else %}
+    <div class="navbar-right">
+        <a href="/login"><button class="btn-login">Login</button></a>
+        <a href="/signup"><button class="btn-signup">Sign Up</button></a>
+    </div>
+    {% endif %}        <button class="hamburger" onclick="toggleDrawer()" aria-label="Open navigation menu" id="hamburgerBtn">
+        <span></span><span></span><span></span>
+    </button>
+</nav>
+
+<!-- ─── Mobile Drawer ─── -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="toggleDrawer()" role="presentation" aria-label="Close menu"></div>
+<div class="drawer" id="drawer">
+    <div class="drawer-header">
+        <span class="logo">TV<span style="color:var(--text);font-weight:300;">Tracker</span></span>
+    </div>
+    {% if session.user_id %}
+    <div class="drawer-user">
+        <span class="avatar">{{ session.get('username', 'U')[0]|upper }}</span>
+        <div>
+            <div style="font-size:14px;font-weight:600;">{{ session.get('username', 'User') }}</div>
+            <div style="font-size:11px;color:var(--text-dim);">Logged in</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <a href="/" class="{% if request.path == '/' %}active{% endif %}">
+        <span class="icon">🏠</span> Home
+    </a>
+    {% if session.user_id %}
+    <a href="/myshows" class="{% if request.path == '/myshows' %}active{% endif %}">
+        <span class="icon">📺</span> My Shows
+    </a>
+    <a href="/upcoming" class="{% if request.path == '/upcoming' %}active{% endif %}">
+        <span class="icon">📅</span> Upcoming
+    </a>
+    <a href="/mymovies" class="{% if request.path == '/mymovies' %}active{% endif %}">
+        <span class="icon">🎬</span> My Movies
+    </a>
+    <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}">
+        <span class="icon">📊</span> Stats
+    </a>
+    <a href="/history" class="{% if request.path == '/history' %}active{% endif %}">
+        <span class="icon">📜</span> History
+    </a>
+    <div class="drawer-divider"></div>
+    <a href="/logout" style="color:var(--accent);">
+        <span class="icon">🚪</span> Logout
+    </a>
+    {% else %}
+    <div class="drawer-divider"></div>
+    <a href="/login">
+        <span class="icon">🔑</span> Login
+    </a>
+    <a href="/signup" style="color:var(--accent);font-weight:600;">
+        <span class="icon">✨</span> Sign Up
+    </a>
+    {% endif %}
+</div>
+
+<!-- ─── Flash Messages (hidden, converted to JS toasts) ─── -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-fallback" id="flashData" data-messages='{{ messages | tojson | safe }}'></div>
+{% endif %}
+{% endwith %}
+
+<!-- ─── Main Content ─── -->
+<main class="page-content">
+    {% block content %}{% endblock %}
+</main>
+
+<script>
+// ── Mobile Drawer ──
+function toggleDrawer() {
+    document.getElementById('drawer').classList.toggle('open');
+    document.getElementById('drawerOverlay').classList.toggle('open');
+    document.getElementById('hamburgerBtn').classList.toggle('active');
+    document.body.style.overflow = document.getElementById('drawer').classList.contains('open') ? 'hidden' : '';
+}
+// Close drawer when clicking a link
+document.querySelectorAll('.drawer a').forEach(link => {
+    link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) toggleDrawer();
+    });
+});
+
+// ── Toast Notifications ──
+function showToast(message, type) {
+    const container = document.getElementById('toastContainer');
+    const icons = { error: '❌', success: '✅', info: 'ℹ️' };
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + (type || 'info');
+    toast.innerHTML = '<span class="toast-icon">' + (icons[type] || 'ℹ️') + '</span> ' + message;
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+        toast.classList.add('show');
+    });
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+    }, 4000);
+}
+
+// Convert flash messages to toasts
+const flashData = document.getElementById('flashData');
+if (flashData) {
+    try {
+        const messages = JSON.parse(flashData.dataset.messages);
+        messages.forEach(function(msg) {
+            showToast(msg[1], msg[0]);
+        });
+    } catch(e) {}
+}
+
+// ── Confirm dialog helper ──
+function confirmAction(msg) {
+    return confirm(msg);
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

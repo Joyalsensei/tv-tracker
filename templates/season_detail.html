@@ -1,179 +1,124 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ season.name }} - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 30px;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        button { padding: 8px 14px; font-size: 14px; border-radius: 6px; border: none; cursor: pointer; transition: background .2s; }
-        button:hover { filter: brightness(1.15); }
+{% extends "base.html" %}
+{% block title %}{{ season.name }} - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    .mark-season-btn {
+        background: var(--accent-green); color: white;
+        padding: 8px 20px; margin-bottom: 20px; font-weight: 600;
+        border: none; border-radius: var(--radius); cursor: pointer;
+        transition: all var(--transition);
+    }
+    .mark-season-btn:hover { filter: brightness(1.15); transform: translateY(-1px); }
 
-        h1 { font-size: 28px; margin-bottom: 20px; }
-        .back-link { display: inline-block; margin-bottom: 20px; color: #999; font-size: 14px; }
-        .back-link:hover { color: #fff; }
+    .episode-list { list-style: none; padding: 0; max-width: 700px; }
+    .episode-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+        border-radius: var(--radius);
+        transition: background var(--transition);
+    }
+    .episode-row:hover { background: var(--bg-card); }
+    .ep-name {
+        flex: 1;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        padding-right: 12px;
+    }
+    .watch-toggle {
+        width: 32px; height: 32px;
+        border-radius: 50%;
+        background: var(--bg-elevated);
+        border: 2px solid #666;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all .25s ease;
+        flex-shrink: 0;
+        font-size: 14px;
+        color: transparent;
+    }
+    .watch-toggle.watched {
+        background: var(--accent-green);
+        border-color: var(--accent-green);
+        color: white;
+    }
+    .watch-toggle:hover { border-color: #aaa; transform: scale(1.1); }
+    .watch-toggle.watched:hover { background: #e74c3c; border-color: #e74c3c; }
+    .ep-number { color: var(--text-dim); font-size: 12px; margin-right: 10px; min-width: 40px; }
 
-        .mark-season-btn {
-            background: #2ecc71; color: white; padding: 8px 20px; margin-bottom: 20px; font-weight: 600;
-        }
+    .confetti-container {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none; z-index: 9999; overflow: hidden;
+    }
+    .confetti-piece {
+        position: absolute; width: 10px; height: 10px; top: -10px;
+        animation: confettiFall var(--fall-duration, 3s) ease-in forwards;
+    }
+    @keyframes confettiFall {
+        0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg) scale(.5); opacity: 0; }
+    }
+    .finished-banner {
+        display: none;
+        position: fixed; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        background: linear-gradient(135deg, var(--accent-green), #27ae60);
+        color: white; padding: 32px 48px;
+        border-radius: 16px; font-size: 28px; font-weight: 700;
+        text-align: center; z-index: 10000;
+        box-shadow: 0 20px 60px rgba(0,0,0,.5);
+        animation: bannerPop .5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    .finished-banner.show { display: block; }
+    .finished-banner .sub { font-size: 16px; font-weight: 400; margin-top: 8px; opacity: .9; }
+    @keyframes bannerPop {
+        0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+        100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="breadcrumb">
+    <a href="/show/{{ show_id }}">Show</a>
+    <span class="sep">›</span>
+    <span>{{ season.name }}</span>
+</div>
 
-        .episode-list { list-style: none; padding: 0; max-width: 700px; }
-        .episode-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 14px;
-            border-bottom: 1px solid #2a2a2a;
-            border-radius: 6px;
-            transition: background .2s;
-        }
-        .episode-row:hover { background: #1a1a1a; }
-        .ep-name {
-            flex: 1;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            padding-right: 12px;
-        }
-        .watch-toggle {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: #333;
-            border: 2px solid #666;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all .25s ease;
-            flex-shrink: 0;
-            font-size: 14px;
-            color: transparent;
-        }
-        .watch-toggle.watched {
-            background: #2ecc71;
-            border-color: #2ecc71;
-            color: white;
-        }
-        .watch-toggle:hover {
-            border-color: #aaa;
-            transform: scale(1.1);
-        }
-        .watch-toggle.watched:hover {
-            background: #e74c3c;
-            border-color: #e74c3c;
-        }
-        .ep-number {
-            color: #777;
-            font-size: 12px;
-            margin-right: 10px;
-            min-width: 40px;
-        }
-
-        /* ── Confetti Animation ── */
-        .confetti-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 9999;
-            overflow: hidden;
-        }
-        .confetti-piece {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            top: -10px;
-            animation: confettiFall var(--fall-duration, 3s) ease-in forwards;
-        }
-        @keyframes confettiFall {
-            0% {
-                transform: translateY(0) rotate(0deg) scale(1);
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(100vh) rotate(720deg) scale(0.5);
-                opacity: 0;
-            }
-        }
-
-        /* ── Finished Banner ── */
-        .finished-banner {
-            display: none;
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: linear-gradient(135deg, #2ecc71, #27ae60);
-            color: white;
-            padding: 32px 48px;
-            border-radius: 16px;
-            font-size: 28px;
-            font-weight: 700;
-            text-align: center;
-            z-index: 10000;
-            box-shadow: 0 20px 60px rgba(0,0,0,.5);
-            animation: bannerPop .5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-        .finished-banner.show { display: block; }
-        .finished-banner .sub {
-            font-size: 16px;
-            font-weight: 400;
-            margin-top: 8px;
-            opacity: .9;
-        }
-        @keyframes bannerPop {
-            0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
-
-    <a href="/show/{{ show_id }}" class="back-link">← Back to show</a>
+<div class="page-header">
     <h1>📺 {{ season.name }}</h1>
+</div>
 
-    <button class="mark-season-btn" onclick="markWholeSeasonWatched({{ show_id }}, {{ season.season_number }}, {{ season.episodes|length }})">
-        Mark Whole Season Watched
-    </button>
+<button class="mark-season-btn" onclick="markWholeSeasonWatched({{ show_id }}, {{ season.season_number }}, {{ season.episodes|length }})">
+    Mark Whole Season Watched
+</button>
 
-    <ul class="episode-list">
-    {% for episode in season.episodes %}
-        <li class="episode-row">
-            <span class="ep-number">Ep {{ episode.episode_number }}</span>
-            <span class="ep-name">{{ episode.name }}</span>
-            <span class="watch-toggle{% if episode.episode_number in watched_episodes %} watched{% endif %}"
-                  data-show="{{ show_id }}"
-                  data-season="{{ season.season_number }}"
-                  data-episode="{{ episode.episode_number }}"
-                  onclick="markWatched(this)">
-                ✓
-            </span>
-        </li>
-    {% endfor %}
-    </ul>
+<ul class="episode-list">
+{% for episode in season.episodes %}
+    <li class="episode-row">
+        <span class="ep-number">Ep {{ episode.episode_number }}</span>
+        <span class="ep-name">{{ episode.name }}</span>
+        <span class="watch-toggle{% if episode.episode_number in watched_episodes %} watched{% endif %}"
+              data-show="{{ show_id }}"
+              data-season="{{ season.season_number }}"
+              data-episode="{{ episode.episode_number }}"
+              onclick="markWatched(this)">
+            ✓
+        </span>
+    </li>
+{% endfor %}
+</ul>
 
-    <!-- Confetti container (hidden by default) -->
-    <div class="confetti-container" id="confettiContainer"></div>
-    <div class="finished-banner" id="finishedBanner">
-        🎉 Show finished! 🎉
-        <div class="sub">You've watched every episode. Great job!</div>
-    </div>
+<div class="confetti-container" id="confettiContainer"></div>
+<div class="finished-banner" id="finishedBanner">
+    🎉 Show finished! 🎉
+    <div class="sub">You've watched every episode. Great job!</div>
+</div>
 
 <script>
 function markWatched(el) {
@@ -182,126 +127,53 @@ function markWatched(el) {
     const episode = parseInt(el.dataset.episode);
     const formData = new FormData();
     formData.append('_csrf_token', '{{ csrf_token() }}');
-
     fetch(`/watch/${show}/${season}/${episode}`, {method: 'POST', body: formData})
         .then(res => res.json())
         .then(data => {
             if (data.status === "watched") {
-                el.classList.add('watched');
-                el.textContent = '✓';
-
-                // 🆕 FIX: Multi-season marking
-                // If this is the last episode of the season AND season > 1
+                el.classList.add('watched'); el.textContent = '✓';
                 if (data.is_last_episode && season > 1) {
-                    const confirmPrev = confirm(
-                        `✅ You finished Season ${season}!\n\nMark ALL episodes from ${season - 1} previous season${season > 2 ? 's' : ''} as watched too?`
-                    );
-                    if (confirmPrev) {
-                        const bulkForm = new FormData();
-                        bulkForm.append('_csrf_token', '{{ csrf_token() }}');
-                        fetch(`/mark_previous_seasons/${show}/${season}`, {method: 'POST', body: bulkForm})
-                            .then(res => res.json())
-                            .then(d => {
-                                if (d.status === 'ok') {
-                                    location.reload();
-                                } else {
-                                    alert('Could not mark previous seasons.');
-                                }
-                            })
-                            .catch(err => {
-                                console.error('Error marking previous seasons:', err);
-                                alert('Could not mark previous seasons.');
-                            });
-                        return; // Don't show the second prompt if user clicked OK
+                    if (confirm(`✅ You finished Season ${season}! Mark ALL episodes from ${season-1} previous season${season > 2 ? 's' : ''} as watched too?`)) {
+                        const form = new FormData();
+                        form.append('_csrf_token', '{{ csrf_token() }}');
+                        fetch(`/mark_previous_seasons/${show}/${season}`, {method: 'POST', body: form})
+                            .then(r => r.json()).then(d => { if (d.status === 'ok') location.reload(); });
+                        return;
                     }
                 }
-
-                // Original "mark up to this episode in same season" prompt
-                const confirmBulk = confirm(`Mark all episodes up to Episode ${episode} in Season ${season} as watched too?`);
-                if (confirmBulk) {
-                    const bulkFormData = new FormData();
-                    bulkFormData.append('_csrf_token', '{{ csrf_token() }}');
-                    fetch(`/mark_season_watched/${show}/${season}/${episode}`, {method: 'POST', body: bulkFormData})
-                        .then(res => res.json())
-                        .then(data => {
-                            if (data.status === 'ok') {
-                                location.reload();
-                            } else {
-                                alert('Could not mark episodes as watched.');
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Error marking episodes watched:', err);
-                            alert('Could not mark episodes as watched.');
-                        });
+                if (confirm(`Mark all episodes up to Episode ${episode} in Season ${season} as watched too?`)) {
+                    const form = new FormData();
+                    form.append('_csrf_token', '{{ csrf_token() }}');
+                    fetch(`/mark_season_watched/${show}/${season}/${episode}`, {method: 'POST', body: form})
+                        .then(r => r.json()).then(d => { if (d.status === 'ok') location.reload(); });
                 }
             } else {
-                el.classList.remove('watched');
-                el.textContent = '';  // FIX: Clear checkmark when unwatched
+                el.classList.remove('watched'); el.textContent = '';
             }
-            if (data.finished) {
-                triggerConfetti();
-            }
+            if (data.finished) triggerConfetti();
         });
+}
+
+function markWholeSeasonWatched(show, season, totalEpisodes) {
+    if (confirm(`Mark all ${totalEpisodes} episodes as watched?`)) {
+        const formData = new FormData();
+        formData.append('_csrf_token', '{{ csrf_token() }}');
+        fetch(`/mark_season_watched/${show}/${season}/${totalEpisodes}`, {method: 'POST', body: formData})
+            .then(r => r.json()).then(d => { if (d.status === 'ok') location.reload(); });
     }
+}
 
-    function markWholeSeasonWatched(show, season, totalEpisodes) {
-        if (confirm(`Mark all ${totalEpisodes} episodes of Season ${season} as watched?`)) {
-            const formData = new FormData();
-            formData.append('_csrf_token', '{{ csrf_token() }}');
-            fetch(`/mark_season_watched/${show}/${season}/${totalEpisodes}`, {method: 'POST', body: formData})
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 'ok') {
-                        location.reload();
-                    } else {
-                        alert('Could not mark season as watched.');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error marking season watched:', err);
-                    alert('Could not mark season as watched.');
-                });
-        }
+function triggerConfetti() {
+    const container = document.getElementById('confettiContainer');
+    const colors = ['#e50914','#f5c518','#2ecc71','#3498db','#e74c3c','#9b59b6','#f39c12','#1abc9c'];
+    for (let i = 0; i < 80; i++) {
+        const piece = document.createElement('div');
+        piece.className = 'confetti-piece';
+        piece.style.cssText = `left:${Math.random()*100}%;width:${Math.random()*8+6}px;height:${Math.random()*8+6}px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>.5?'50%':'2px'};animation-delay:${Math.random()*2}s;--fall-duration:${Math.random()*2+2}s`;
+        container.appendChild(piece);
     }
-
-    function triggerConfetti() {
-        const container = document.getElementById('confettiContainer');
-        const colors = ['#e50914', '#f5c518', '#2ecc71', '#3498db', '#e74c3c', '#9b59b6', '#f39c12', '#1abc9c'];
-        const shapes = ['circle', 'square'];
-
-        for (let i = 0; i < 80; i++) {
-            const piece = document.createElement('div');
-            piece.className = 'confetti-piece';
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            const size = Math.random() * 8 + 6;
-            const left = Math.random() * 100;
-            const delay = Math.random() * 2;
-            const duration = Math.random() * 2 + 2;
-            const shape = shapes[Math.floor(Math.random() * shapes.length)];
-
-            piece.style.left = left + '%';
-            piece.style.width = size + 'px';
-            piece.style.height = size + 'px';
-            piece.style.background = color;
-            piece.style.borderRadius = shape === 'circle' ? '50%' : '2px';
-            piece.style.animationDelay = delay + 's';
-            piece.style.setProperty('--fall-duration', duration + 's');
-
-            container.appendChild(piece);
-        }
-
-        // Show the banner
-        const banner = document.getElementById('finishedBanner');
-        banner.classList.add('show');
-
-        // Clean up after animation
-        setTimeout(() => {
-            container.innerHTML = '';
-            banner.classList.remove('show');
-        }, 5000);
-    }
+    document.getElementById('finishedBanner').classList.add('show');
+    setTimeout(() => { container.innerHTML = ''; document.getElementById('finishedBanner').classList.remove('show'); }, 5000);
+}
 </script>
-
-</body>
-</html>
+{% endblock %}

@@ -1,237 +1,157 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Admin Dashboard - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 30px 40px;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        h1 { font-size: 28px; margin-bottom: 4px; }
-        .sub-nav { color: #999; font-size: 14px; margin-bottom: 24px; display: flex; gap: 16px; }
-        .sub-nav a:hover { color: #fff; }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 16px;
-            margin-bottom: 30px;
-        }
-        .stat-card {
-            background: #1a1a1a;
-            border-radius: 10px;
-            padding: 20px;
-            text-align: center;
-            border: 1px solid #2a2a2a;
-        }
-        .stat-card .stat-number {
-            font-size: 36px;
-            font-weight: 800;
-            color: #e50914;
-        }
-        .stat-card .stat-label {
-            font-size: 13px;
-            color: #999;
-            margin-top: 4px;
-        }
-
-        .section {
-            margin-bottom: 30px;
-        }
-        .section h2 {
-            font-size: 18px;
-            margin-bottom: 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #2a2a2a;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 14px;
-        }
-        th, td {
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid #2a2a2a;
-        }
-        th { color: #999; font-weight: 600; font-size: 12px; text-transform: uppercase; }
-        td { color: #ccc; }
-
-        .admin-badge {
-            display: inline-block;
-            background: #e50914;
-            color: white;
-            font-size: 11px;
-            padding: 2px 8px;
-            border-radius: 4px;
-            margin-left: 8px;
-            font-weight: 600;
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
-
+{% extends "base.html" %}
+{% block title %}Admin Dashboard - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    th, td {
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--text-dim); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+    td { color: var(--text-secondary); }
+    .admin-badge {
+        display: inline-block;
+        background: var(--accent);
+        color: white;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        margin-left: 8px;
+        font-weight: 600;
+    }
+    .maintenance-box {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        padding: 20px;
+        border: 1px solid var(--border);
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
     <h1>⚙️ Admin Dashboard <span class="admin-badge">Only You</span></h1>
-    <div class="sub-nav">
-        <a href="/">Home</a>
-        <a href="/myshows">My Shows</a>
-        <a href="/mymovies">My Movies</a>
-        <a href="/history">History</a>
-    </div>
+    <div class="subtitle">Site-wide statistics and maintenance</div>
+</div>
 
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-number">{{ total_users }}</div>
-            <div class="stat-label">Total Users</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number">{{ total_shows }}</div>
-            <div class="stat-label">Total Items Added</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number">{{ total_tv }}</div>
-            <div class="stat-label">TV Shows</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number">{{ total_movies }}</div>
-            <div class="stat-label">Movies</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number">{{ total_watched_eps }}</div>
-            <div class="stat-label">Episodes Watched</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-number">{{ total_watched_movies }}</div>
-            <div class="stat-label">Movies Watched</div>
-        </div>
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-number">{{ total_users }}</div>
+        <div class="stat-label">Total Users</div>
     </div>
-
-    <div class="section">
-        <h2>📝 Recent Signups</h2>
-        <table>
-            <tr>
-                <th>User ID</th>
-                <th>Username</th>
-            </tr>
-            {% for user in recent_users %}
-            <tr>
-                <td>{{ user[0] }}</td>
-                <td>{{ user[1] }}</td>
-            </tr>
-            {% endfor %}
-            {% if not recent_users %}
-            <tr><td colspan="2" style="color:#666;">No users yet</td></tr>
-            {% endif %}
-        </table>
+    <div class="stat-card">
+        <div class="stat-number">{{ total_shows }}</div>
+        <div class="stat-label">Total Items</div>
     </div>
-
-    <div class="section">
-        <h2>📊 Top Contributors</h2>
-        <table>
-            <tr>
-                <th>Username</th>
-                <th>Items Added</th>
-            </tr>
-            {% for row in user_activity %}
-            <tr>
-                <td>{{ row[0] }}</td>
-                <td>{{ row[1] }}</td>
-            </tr>
-            {% endfor %}
-            {% if not user_activity %}
-            <tr><td colspan="2" style="color:#666;">No data yet</td></tr>
-            {% endif %}
-        </table>
+    <div class="stat-card">
+        <div class="stat-number">{{ total_tv }}</div>
+        <div class="stat-label">TV Shows</div>
     </div>
-
-    <div class="section" style="margin-top:30px;">
-        <h2>🔧 Maintenance</h2>
-        <div style="background:#1a1a1a;border-radius:10px;padding:20px;border:1px solid #2a2a2a;">
-            <p style="color:#ccc;font-size:14px;margin-bottom:12px;">
-                Recalculate <code>total_episodes</code> for all TV shows using accurate TMDB season endpoint data.
-                Fixes the episode count bug where ongoing shows (like One Piece) showed watched &gt; total.
-            </p>
-            <button id="btn-repair" onclick="runRepair()" style="background:#e50914;color:white;padding:10px 24px;font-size:15px;border:none;border-radius:6px;cursor:pointer;">
-                🔧 Repair Episode Counts
-            </button>
-            <div id="repair-status" style="margin-top:12px;font-size:13px;color:#999;"></div>
-            <div id="repair-results" style="margin-top:12px;max-height:300px;overflow-y:auto;font-size:12px;"></div>
-        </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ total_movies }}</div>
+        <div class="stat-label">Movies</div>
     </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ total_watched_eps }}</div>
+        <div class="stat-label">Episodes Watched</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-number">{{ total_watched_movies }}</div>
+        <div class="stat-label">Movies Watched</div>
+    </div>
+</div>
 
-    <p style="color:#555;font-size:12px;margin-top:40px;text-align:center;">
-        Only the first registered user (you) can see this page.
+<div class="section-header">
+    <span>📝 Recent Signups</span>
+</div>
+<table>
+    <tr><th>User ID</th><th>Username</th></tr>
+    {% for user in recent_users %}
+    <tr><td>{{ user[0] }}</td><td>{{ user[1] }}</td></tr>
+    {% endfor %}
+    {% if not recent_users %}
+    <tr><td colspan="2" style="color:var(--text-dim);">No users yet</td></tr>
+    {% endif %}
+</table>
+
+<div class="section-header" style="margin-top:32px;">
+    <span>📊 Top Contributors</span>
+</div>
+<table>
+    <tr><th>Username</th><th>Items Added</th></tr>
+    {% for row in user_activity %}
+    <tr><td>{{ row[0] }}</td><td>{{ row[1] }}</td></tr>
+    {% endfor %}
+    {% if not user_activity %}
+    <tr><td colspan="2" style="color:var(--text-dim);">No data yet</td></tr>
+    {% endif %}
+</table>
+
+<div class="section-header" style="margin-top:32px;">
+    <span>🔧 Maintenance</span>
+</div>
+<div class="maintenance-box">
+    <p style="color:var(--text-secondary);font-size:14px;margin-bottom:12px;">
+        Recalculate <code>total_episodes</code> for all TV shows using accurate TMDB season endpoint data.
+        Fixes the episode count bug where ongoing shows (like One Piece) showed watched &gt; total.
     </p>
+    <button id="btn-repair" onclick="runRepair()" class="btn btn-primary">
+        🔧 Repair Episode Counts
+    </button>
+    <div id="repair-status" style="margin-top:12px;font-size:13px;color:var(--text-dim);"></div>
+    <div id="repair-results" style="margin-top:12px;max-height:300px;overflow-y:auto;font-size:12px;"></div>
+</div>
+
+<p style="color:var(--text-dim);font-size:12px;margin-top:40px;text-align:center;">
+    Only the first registered user (you) can see this page.
+</p>
 
 <script>
 function runRepair() {
     const btn = document.getElementById('btn-repair');
     const status = document.getElementById('repair-status');
     const results = document.getElementById('repair-results');
-
     btn.disabled = true;
     btn.textContent = '⏳ Repairing...';
     status.textContent = 'Fetching episode counts from TMDB...';
     results.innerHTML = '';
-
     const formData = new FormData();
     formData.append('_csrf_token', '{{ csrf_token() }}');
-
     fetch('/admin/repair_episodes', {method: 'POST', body: formData})
         .then(res => res.json())
         .then(data => {
             btn.disabled = false;
             btn.textContent = '🔧 Repair Episode Counts';
-
             if (data.status === 'ok') {
-                status.innerHTML = '<strong style="color:#2ecc71;">✅ Done!</strong> '
+                status.innerHTML = '<strong style="color:var(--accent-green);">✅ Done!</strong> '
                     + data.total + ' shows checked. '
                     + '<span style="color:#f39c12;">' + data.fixed + ' updated</span>'
                     + (data.corrupted > 0 ? ', <span style="color:#e74c3c;">' + data.corrupted + ' corrupted (repaired)</span>' : '')
                     + '.';
-
-                let html = '<table style="width:100%;font-size:12px;">'
-                    + '<tr style="color:#999;"><th>User</th><th>Show</th><th>Watched</th><th>Total</th><th>Status</th></tr>';
+                let html = '<table style="width:100%;font-size:12px;"><tr style="color:var(--text-dim);"><th>User</th><th>Show</th><th>Watched</th><th>Total</th><th>Status</th></tr>';
                 data.results.forEach(function(r) {
-                    const color = r.status === 'corrupted' ? '#e74c3c' : (r.status === 'updated' ? '#f39c12' : '#2ecc71');
-                    html += '<tr>'
-                        + '<td>' + escapeHtml(r.user) + '</td>'
-                        + '<td>' + escapeHtml(r.show) + '</td>'
-                        + '<td>' + r.watched + '</td>'
-                        + '<td>' + r.new_total + '</td>'
-                        + '<td style="color:' + color + ';">' + r.status + '</td>'
-                        + '</tr>';
+                    const color = r.status === 'corrupted' ? '#e74c3c' : (r.status === 'updated' ? '#f39c12' : 'var(--accent-green)');
+                    html += '<tr><td>' + escapeHtml(r.user) + '</td><td>' + escapeHtml(r.show) + '</td><td>' + r.watched + '</td><td>' + r.new_total + '</td><td style="color:' + color + ';">' + r.status + '</td></tr>';
                 });
                 html += '</table>';
                 results.innerHTML = html;
             } else {
                 status.innerHTML = '<strong style="color:#e74c3c;">Error:</strong> ' + escapeHtml(data.message);
             }
-        })
-        .catch(function(err) {
+        }).catch(function(err) {
             btn.disabled = false;
             btn.textContent = '🔧 Repair Episode Counts';
             status.innerHTML = '<strong style="color:#e74c3c;">Error:</strong> ' + escapeHtml(err.message);
         });
 }
-
 function escapeHtml(text) {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(text || ''));
     return div.innerHTML;
 }
 </script>
-</body>
-</html>
+{% endblock %}

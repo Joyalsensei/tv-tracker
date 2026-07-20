@@ -1,279 +1,169 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Watched History - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 30px 40px 60px;
-            overflow-x: hidden;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        button { padding: 8px 14px; font-size: 15px; border-radius: 6px; border: none; cursor: pointer; }
-
-        h1 { font-size: 28px; margin-bottom: 4px; }
-        .sub-nav {
-            color: #999; font-size: 14px; margin-bottom: 24px;
-            display: flex; gap: 16px; flex-wrap: wrap;
-        }
-        .sub-nav a { padding: 8px 0; }
-        .sub-nav a:hover { color: #fff; }
-
-        /* ── Section Headers ── */
-        .section-header {
-            display: flex; align-items: center; gap: 10px;
-            font-size: 20px; font-weight: 700; margin-bottom: 16px;
-            padding-bottom: 8px; border-bottom: 1px solid #2a2a2a;
-        }
-        .section-header .count {
-            font-size: 13px; font-weight: 400; color: #888;
-            background: #222; padding: 2px 10px; border-radius: 12px;
-        }
-
-        /* ── Timeline ── */
-        .timeline-section { margin-bottom: 40px; }
-        .timeline {
-            position: relative;
-            padding-left: 32px;
-        }
-        .timeline::before {
-            content: '';
-            position: absolute; left: 12px; top: 0; bottom: 0;
-            width: 2px; background: #2a2a2a;
-        }
-        .timeline-item {
-            position: relative;
-            display: flex; align-items: center; gap: 16px;
-            padding: 12px 16px;
-            margin-bottom: 8px;
-            background: #1a1a1a;
-            border-radius: 10px;
-            transition: background .2s, transform .2s;
-        }
-        .timeline-item:hover {
-            background: #222;
-            transform: translateX(4px);
-        }
-        .timeline-item::before {
-            content: '';
-            position: absolute; left: -26px; top: 50%; transform: translateY(-50%);
-            width: 10px; height: 10px;
-            border-radius: 50%;
-            background: #e50914;
-            border: 2px solid #141414;
-        }
-        .timeline-item.movie::before { background: #3498db; }
-        .timeline-item.show::before { background: #2ecc71; }
-        .timeline-item .tl-thumb {
-            width: 48px; height: 72px;
-            border-radius: 6px; object-fit: cover;
-            flex-shrink: 0;
-        }
-        .timeline-item .tl-thumb-placeholder {
-            width: 48px; height: 72px;
-            border-radius: 6px; background: #2a2a2a;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 10px; color: #555;
-            flex-shrink: 0;
-        }
-        .timeline-item .tl-info { flex: 1; min-width: 0; }
-        .timeline-item .tl-info .tl-title {
-            font-size: 15px; font-weight: 600;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .timeline-item .tl-info .tl-meta {
-            font-size: 12px; color: #888;
-            display: flex; gap: 12px; margin-top: 2px;
-        }
-        .timeline-item .tl-info .tl-meta .tl-type { display: inline-flex; align-items: center; gap: 4px; }
-        .timeline-item .tl-info .tl-meta .tl-type.movie { color: #66b3ff; }
-        .timeline-item .tl-info .tl-meta .tl-type.show { color: #6fcf97; }
-        .timeline-item .tl-rating { font-size: 14px; color: #f5c518; white-space: nowrap; flex-shrink: 0; }
-        .timeline-item .tl-date { font-size: 12px; color: #666; white-space: nowrap; flex-shrink: 0; }
-
-        /* ── Grid: CSS grid for even spacing ── */
-        .grid-section { margin-bottom: 40px; }
-        .show-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 16px;
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .show-card {
-            text-align: center;
-            transition: transform .2s, box-shadow .2s;
-            width: 100%;
-        }
-        .show-card:hover { transform: scale(1.05); }
-        .show-card a { display: block; }
-        .show-card img {
-            width: 100%;
-            border-radius: 8px;
-            aspect-ratio: 2/3;
-            object-fit: cover;
-        }
-        .show-card .no-poster {
-            width: 100%; aspect-ratio: 2/3;
-            background: #222; border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 11px; color: #555;
-        }
-        .show-card .card-title {
-            margin-top: 6px;
-            font-size: 14px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .show-card .card-rating { font-size: 12px; color: #f5c518; }
-        .show-card .card-date {
-            font-size: 11px; color: #666; margin-top: 2px;
-        }
-
-        .empty-state {
-            text-align: center; padding: 60px 20px; color: #777;
-        }
-        .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
-        .empty-state p { font-size: 15px; }
-
-        @media (max-width: 600px) {
-            body { padding: 16px; }
-            .show-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-            .timeline { padding-left: 24px; }
-            .timeline::before { left: 8px; }
-            .timeline-item::before { left: -20px; }
-            .timeline-item .tl-date { display: none; }
-            h1 { font-size: 22px; }
-            .show-card .card-title { font-size: 12px; }
-        }
-        @media (max-width: 400px) {
-            .show-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
-
+{% extends "base.html" %}
+{% block title %}Watched History - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    .timeline {
+        position: relative;
+        padding-left: 32px;
+    }
+    .timeline::before {
+        content: '';
+        position: absolute; left: 12px; top: 0; bottom: 0;
+        width: 2px; background: var(--border);
+    }
+    .timeline-item {
+        position: relative;
+        display: flex; align-items: center; gap: 16px;
+        padding: 12px 16px;
+        margin-bottom: 8px;
+        background: var(--bg-card);
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        transition: all var(--transition);
+    }
+    .timeline-item:hover {
+        background: var(--bg-hover);
+        transform: translateX(4px);
+        border-color: var(--text-dim);
+    }
+    .timeline-item::before {
+        content: '';
+        position: absolute; left: -26px; top: 50%;
+        transform: translateY(-50%);
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 2px solid var(--bg);
+    }
+    .timeline-item.movie::before { background: var(--accent-blue); }
+    .timeline-item.show::before { background: var(--accent-green); }
+    .timeline-item .tl-thumb {
+        width: 48px; height: 72px;
+        border-radius: 6px; object-fit: cover;
+        flex-shrink: 0;
+    }
+    .tl-thumb-placeholder {
+        width: 48px; height: 72px;
+        border-radius: 6px; background: var(--bg-elevated);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 10px; color: var(--text-dim);
+        flex-shrink: 0;
+    }
+    .timeline-item .tl-info { flex: 1; min-width: 0; }
+    .timeline-item .tl-info .tl-title {
+        font-size: 15px; font-weight: 600;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .timeline-item .tl-info .tl-meta {
+        font-size: 12px; color: var(--text-dim);
+        display: flex; gap: 12px; margin-top: 2px;
+    }
+    .timeline-item .tl-date {
+        font-size: 12px; color: var(--text-dim);
+        white-space: nowrap; flex-shrink: 0;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
     <h1>📜 Watched History</h1>
-    <div class="sub-nav">
-        <a href="/">🏠 Home</a>
-        <a href="/myshows">📺 My Shows</a>
-        <a href="/mymovies">🎬 My Movies</a>
-    </div>
+    <div class="subtitle">Your viewing journey</div>
+</div>
 
-    {% if not timeline %}
-    <div class="empty-state">
-        <div class="empty-icon">🎬</div>
-        <p>No watched content yet.</p>
-        <p style="margin-top:4px;font-size:13px;color:#555;">
-            Mark movies as watched or complete a show to see it here.
-        </p>
-        <a href="/" style="display:inline-block;margin-top:16px;">
-            <button style="background:#e50914;color:white;padding:10px 24px;">
-                Browse Shows & Movies
-            </button>
-        </a>
-    </div>
-    {% else %}
+{% if not timeline %}
+<div class="empty-state">
+    <div class="empty-icon">🎬</div>
+    <p>No watched content yet.</p>
+    <p style="margin-top:4px;font-size:13px;color:var(--text-dim);">
+        Mark movies as watched or complete a show to see it here.
+    </p>
+    <a href="/"><button class="btn btn-primary">Browse Shows & Movies</button></a>
+</div>
+{% else %}
 
-    <!-- ⏱ Timeline: Recently Watched -->
-    <div class="timeline-section">
-        <div class="section-header">
-            ⏱ Recently Watched
-            <span class="count">{{ timeline|length }}</span>
-        </div>
-        <div class="timeline">
-            {% for item in timeline[:30] %}
-            <a href="/show/{{ item.tmdb_id }}" class="timeline-item {{ item.type }}">
-                {% if item.poster_path %}
-                <img class="tl-thumb" src="https://image.tmdb.org/t/p/w92{{ item.poster_path }}" alt="{{ item.name }}" loading="lazy">
-                {% else %}
-                <div class="tl-thumb-placeholder">No Poster</div>
-                {% endif %}
-                <div class="tl-info">
-                    <div class="tl-title">{{ item.name }}</div>
-                    <div class="tl-meta">
-                        <span class="tl-type {{ item.type }}">
-                            {% if item.type == "movie" %}🎬 Movie{% else %}📺 Show{% endif %}
-                        </span>
-                    </div>
-                </div>
+<div class="section-header">
+    <span>⏱ Recently Watched</span>
+    <span class="count">{{ timeline|length }}</span>
+</div>
+<div class="timeline">
+    {% for item in timeline[:30] %}
+    <a href="/show/{{ item.tmdb_id }}" class="timeline-item {{ item.type }}">
+        {% if item.poster_path %}
+        <img class="tl-thumb" src="https://image.tmdb.org/t/p/w92{{ item.poster_path }}" alt="{{ item.name }}" loading="lazy">
+        {% else %}
+        <div class="tl-thumb-placeholder">No Poster</div>
+        {% endif %}
+        <div class="tl-info">
+            <div class="tl-title">{{ item.name }}</div>
+            <div class="tl-meta">
+                <span>{% if item.type == "movie" %}🎬 Movie{% else %}📺 Show{% endif %}</span>
                 {% if item.rating %}
-                <span class="tl-rating">★ {{ "%.1f"|format(item.rating|float) }}</span>
+                <span style="color:var(--accent-yellow);">★ {{ "%.1f"|format(item.rating|float) }}</span>
                 {% endif %}
-                <span class="tl-date">
-                    {{ item.date[:10] if item.date else "—" }}
-                </span>
-            </a>
-            {% endfor %}
+            </div>
         </div>
-    </div>
+        <span class="tl-date">{{ item.date[:10] if item.date else "—" }}</span>
+    </a>
+    {% endfor %}
+</div>
 
-    <!-- 🎬 Watched Movies Grid -->
-    <div class="grid-section">
-        <div class="section-header">
-            🎬 Watched Movies
-            <span class="count">{{ watched_movies|length }}</span>
-        </div>
-        {% if watched_movies %}
-        <ul class="show-grid">
-            {% for movie in watched_movies %}
-            <li class="show-card">
-                <a href="/show/{{ movie[0] }}">
-                    {% if movie[2] %}
-                    <img src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
-                    {% else %}
-                    <div class="no-poster">No Poster</div>
-                    {% endif %}
-                </a>
-                <p class="card-title">{{ movie[1] }}</p>
+<div class="section-header" style="margin-top:40px;">
+    <span>🎬 Watched Movies</span>
+    <span class="count">{{ watched_movies|length }}</span>
+</div>
+{% if watched_movies %}
+<ul class="card-grid">
+    {% for movie in watched_movies %}
+    <li class="card">
+        <a href="/show/{{ movie[0] }}">
+            {% if movie[2] %}
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
+            {% else %}
+            <div class="card-poster-placeholder">No Poster</div>
+            {% endif %}
+        </a>
+        <div class="card-body">
+            <div class="card-title">{{ movie[1] }}</div>
+            <div class="card-meta">
                 <span class="card-rating">★ {{ "%.1f"|format(movie[4]|float) if movie[4] else "N/A" }}</span>
-                <p class="card-date">Watched {{ movie[3][:10] if movie[3] else "" }}</p>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p style="color:#666;font-size:14px;">No movies marked as watched yet.</p>
-        {% endif %}
-    </div>
-
-    <!-- ✅ Completed Shows Grid -->
-    <div class="grid-section">
-        <div class="section-header">
-            ✅ Completed Shows
-            <span class="count">{{ completed_shows|length }}</span>
+                <span class="card-year">{{ movie[3][:10] if movie[3] else "" }}</span>
+            </div>
         </div>
-        {% if completed_shows %}
-        <ul class="show-grid">
-            {% for show in completed_shows %}
-            <li class="show-card">
-                <a href="/show/{{ show[0] }}">
-                    {% if show[2] %}
-                    <img src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
-                    {% else %}
-                    <div class="no-poster">No Poster</div>
-                    {% endif %}
-                </a>
-                <p class="card-title">{{ show[1] }}</p>
-                <span class="card-rating">★ {{ "%.1f"|format(show[6]|float) if show[6] else "N/A" }}</span>
-                <p class="card-date">Completed {{ show[5][:10] if show[5] else "" }}</p>
-            </li>
-            {% endfor %}
-        </ul>
-        {% else %}
-        <p style="color:#666;font-size:14px;">No shows completed yet.</p>
-        {% endif %}
-    </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p style="color:var(--text-dim);font-size:14px;">No movies marked as watched yet.</p>
+{% endif %}
 
-    {% endif %}
-</body>
-</html>
+<div class="section-header" style="margin-top:40px;">
+    <span>✅ Completed Shows</span>
+    <span class="count">{{ completed_shows|length }}</span>
+</div>
+{% if completed_shows %}
+<ul class="card-grid">
+    {% for show in completed_shows %}
+    <li class="card">
+        <a href="/show/{{ show[0] }}">
+            {% if show[2] %}
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
+            {% else %}
+            <div class="card-poster-placeholder">No Poster</div>
+            {% endif %}
+        </a>
+        <div class="card-body">
+            <div class="card-title">{{ show[1] }}</div>
+            <div class="card-meta">
+                <span class="card-rating">★ {{ "%.1f"|format(show[6]|float) if show[6] else "N/A" }}</span>
+                <span class="card-year">Completed {{ show[5][:10] if show[5] else "" }}</span>
+            </div>
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p style="color:var(--text-dim);font-size:14px;">No shows completed yet.</p>
+{% endif %}
+
+{% endif %}
+{% endblock %}

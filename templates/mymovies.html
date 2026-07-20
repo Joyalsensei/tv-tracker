@@ -1,161 +1,98 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>My Movies - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 30px;
-            overflow-x: hidden;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        button { padding: 8px; font-size: 15px; border-radius: 6px; border: none; cursor: pointer; }
-        h1 { font-size: 28px; margin-bottom: 4px; }
-        .sub-nav { color: #999; font-size: 14px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; }
-        .sub-nav a { padding: 8px 0; }
-        .sub-nav a:hover { color: #fff; }
-
-        /* ── Grid: CSS grid for even spacing ── */
-        .show-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 16px;
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .show-card {
-            text-align: center;
-            transition: transform .2s;
-            width: 100%;
-        }
-        .show-card:hover { transform: scale(1.05); }
-        .show-card a { display: block; }
-        .show-card img {
-            width: 100%;
-            border-radius: 8px;
-            aspect-ratio: 2/3;
-            object-fit: cover;
-        }
-        .show-card .card-title {
-            margin-top: 6px;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .show-card .card-rating {
-            font-size: 12px;
-            color: #f5c518;
-            display: block;
-        }
-        .watch-btn {
-            display: block;
-            width: 100%;
-            margin-top: 8px;
-            padding: 8px 0;
-            background: #333;
-            color: #eee;
-            border: 1px solid #555;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all .2s;
-        }
-        .watch-btn.watched {
-            background: #2ecc71;
-            border-color: #2ecc71;
-            color: white;
-        }
-        .watch-btn:hover { filter: brightness(1.15); }
-
-        .remove-link {
-            display: inline-block;
-            margin-top: 6px;
-            font-size: 11px;
-            color: #ff6b6b;
-            background: none !important;
-            border: none !important;
-            padding: 6px 0 !important;
-            cursor: pointer;
-        }
-        .remove-link:hover { text-decoration: underline; }
-        .empty-state { color: #999; margin-top: 20px; }
-
-        @media (max-width: 600px) {
-            body { padding: 16px; }
-            .show-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-            .show-card .card-title { font-size: 12px; }
-            h1 { font-size: 22px; }
-        }
-        @media (max-width: 400px) {
-            .show-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}My Movies - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    .watch-btn-card {
+        display: block;
+        width: calc(100% - 8px);
+        margin: 6px auto 0;
+        padding: 6px 0;
+        background: var(--bg-elevated);
+        color: var(--text);
+        border: 1px solid var(--border-light);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all var(--transition);
+    }
+    .watch-btn-card.watched {
+        background: var(--accent-green);
+        border-color: var(--accent-green);
+        color: white;
+    }
+    .watch-btn-card:hover { filter: brightness(1.15); }
+    .remove-link {
+        font-size: 11px; color: #e74c3c;
+        background: none !important; border: none !important;
+        padding: 6px 0 !important; cursor: pointer;
+        opacity: 0; transition: opacity var(--transition);
+        display: block; margin: 0 auto;
+    }
+    .card:hover .remove-link { opacity: 1; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
     <h1>🎬 My Movies</h1>
-    <div class="sub-nav">
-        <a href="/">🏠 Home</a>
-        <a href="/myshows">📺 My Shows</a>
-        <a href="/history">📜 History</a>
-    </div>
+    <div class="subtitle">Your movie collection</div>
+</div>
 
-    {% if movies %}
-    <ul class="show-grid">
-    {% for movie in movies %}
-        <li class="show-card">
-            <a href="/show/{{ movie[0] }}">
-                {% if movie[2] %}
-                <img src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
-                {% else %}
-                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#666;">No Poster</div>
-                {% endif %}
-            </a>
-            <p class="card-title">{{ movie[1] }}</p>
-            <span class="card-rating">★ {{ "%.1f"|format(movie[6]|float) if movie[6] else "N/A" }}</span>
-            <button class="watch-btn{% if movie[5] %} watched{% endif %}" onclick="toggleWatch({{ movie[0] }})" id="watch-btn-{{ movie[0] }}">
+{% if movies %}
+<ul class="card-grid">
+{% for movie in movies %}
+    <li class="card">
+        <a href="/show/{{ movie[0] }}">
+            {% if movie[2] %}
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
+            {% else %}
+            <div class="card-poster-placeholder">No Poster</div>
+            {% endif %}
+        </a>
+        {% if movie[5] %}
+        <div class="card-badge" style="background:rgba(46,204,113,.15);color:var(--accent-green);">✓ Watched</div>
+        {% endif %}
+        <div class="card-body">
+            <div class="card-title">{{ movie[1] }}</div>
+            <div class="card-meta">
+                <span class="card-rating">★ {{ "%.1f"|format(movie[6]|float) if movie[6] else "N/A" }}</span>
+            </div>
+            <button class="watch-btn-card{% if movie[5] %} watched{% endif %}" onclick="toggleWatch({{ movie[0] }})" id="watch-btn-{{ movie[0] }}">
                 {% if movie[5] %}✓ Watched{% else %}Mark as Watched{% endif %}
             </button>
-            <form method="POST" action="/remove/{{ movie[0] }}" style="display:inline;" onsubmit="return confirm('Remove this movie?')">
+            <form method="POST" action="/remove/{{ movie[0] }}" onsubmit="return confirm('Remove this movie?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="remove-link">Remove</button>
             </form>
-        </li>
-    {% endfor %}
-    </ul>
-    {% else %}
-    <p class="empty-state">No movies yet. <a href="/">Search and add some!</a></p>
-    {% endif %}
+        </div>
+    </li>
+{% endfor %}
+</ul>
+{% else %}
+<div class="empty-state">
+    <div class="empty-icon">🎬</div>
+    <p>No movies yet</p>
+    <p style="margin-top:4px;font-size:13px;color:var(--text-dim);">Search for movies and add them to your collection!</p>
+    <a href="/"><button class="btn btn-primary">Browse Movies</button></a>
+</div>
+{% endif %}
 
-    <script>
-    function toggleWatch(movieId) {
-        const formData = new FormData();
-        formData.append('_csrf_token', '{{ csrf_token() }}');
-        fetch('/watch_movie/' + movieId, {method: 'POST', body: formData})
-            .then(res => res.json())
-            .then(data => {
-                const btn = document.getElementById('watch-btn-' + movieId);
-                if (data.status === 'watched') {
-                    btn.textContent = '✓ Watched';
-                    btn.classList.add('watched');
-                } else {
-                    btn.textContent = 'Mark as Watched';
-                    btn.classList.remove('watched');
-                }
-            })
-            .catch(err => console.error('Error toggling watch status:', err));
-    }
-    </script>
-</body>
-</html>
+<script>
+function toggleWatch(movieId) {
+    const formData = new FormData();
+    formData.append('_csrf_token', '{{ csrf_token() }}');
+    fetch('/watch_movie/' + movieId, {method: 'POST', body: formData})
+        .then(res => res.json())
+        .then(data => {
+            const btn = document.getElementById('watch-btn-' + movieId);
+            if (data.status === 'watched') {
+                btn.textContent = '✓ Watched';
+                btn.classList.add('watched');
+            } else {
+                btn.textContent = 'Mark as Watched';
+                btn.classList.remove('watched');
+            }
+        })
+        .catch(err => console.error('Error toggling watch status:', err));
+}
+</script>
+{% endblock %}

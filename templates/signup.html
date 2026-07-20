@@ -1,182 +1,83 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sign Up - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        a:hover { color: #fff; }
-        input, button { padding: 8px 14px; font-size: 15px; border-radius: 6px; border: none; outline: none; }
-        button { background: #e50914; color: white; cursor: pointer; transition: background .2s, transform .15s; }
-        button:hover { background: #f40612; transform: translateY(-1px); }
-        button:active { transform: translateY(0); }
+{% extends "base.html" %}
+{% block title %}Sign Up - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    .auth-wrapper {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        min-height: calc(100vh - var(--nav-height) - 80px);
+    }
+    .auth-card {
+        background: var(--bg-card);
+        border-radius: var(--radius-lg);
+        padding: 48px 40px;
+        width: 100%;
+        max-width: 420px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.5);
+        border: 1px solid var(--border);
+    }
+    .auth-card h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        text-align: center;
+    }
+    .auth-card .subtitle {
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 14px;
+        margin-bottom: 28px;
+    }
+    .auth-form { display: flex; flex-direction: column; gap: 18px; }
+    .auth-form .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .auth-form .form-group label {
+        font-size: 13px;
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+    .auth-form input {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 16px;
+    }
+    .auth-form button[type="submit"] {
+        padding: 14px;
+        font-size: 16px;
+        font-weight: 700;
+        margin-top: 4px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: all var(--transition);
+    }
+    .auth-form button[type="submit"]:hover {
+        background: var(--accent-hover);
+        transform: translateY(-1px);
+    }
+    .auth-card .auth-footer {
+        text-align: center;
+        margin-top: 24px;
+        font-size: 14px;
+        color: var(--text-dim);
+    }
+    .auth-card .auth-footer a { color: #fff; font-weight: 600; }
+    .auth-card .auth-footer a:hover { text-decoration: underline; }
 
-        /* ── Navigation Bar ── */
-        .navbar {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 40px; background: linear-gradient(180deg, rgba(0,0,0,.95) 0%, transparent 100%);
-            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-        }
-        .navbar .logo { font-size: 24px; font-weight: 800; color: #e50914; letter-spacing: -1px; }
-        .navbar .nav-links { display: flex; gap: 20px; align-items: center; }
-        .navbar .nav-links a { color: #ccc; font-size: 14px; transition: color .2s; padding: 8px 0; }
-        .navbar .nav-links a:hover { color: #fff; }
-
-        /* ── Hamburger Menu ── */
-        .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 4px; background: none; border: none; }
-        .hamburger span { display: block; width: 24px; height: 2px; background: #ccc; border-radius: 2px; transition: .3s; }
-        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-        .hamburger.active span:nth-child(2) { opacity: 0; }
-        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-        .mobile-nav-dropdown {
-            display: none;
-            position: fixed; top: 56px; left: 0; right: 0;
-            background: rgba(20,20,20,.98);
-            padding: 16px 24px;
-            z-index: 99;
-            border-bottom: 1px solid #333;
-        }
-        .mobile-nav-dropdown.open { display: block; }
-        .mobile-nav-dropdown a {
-            display: block; padding: 14px 0;
-            font-size: 16px; color: #ccc;
-            border-bottom: 1px solid #222;
-        }
-        .mobile-nav-dropdown a:last-child { border-bottom: none; }
-        .mobile-nav-dropdown a:hover { color: #fff; }
-
-        /* ── Auth Container ── */
-        .auth-wrapper {
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 100px 20px 40px;
-        }
-        .auth-card {
-            background: rgba(0,0,0,.75);
-            border-radius: 12px;
-            padding: 48px 40px;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 20px 60px rgba(0,0,0,.5);
-        }
-        .auth-card h1 {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 24px;
-            text-align: center;
-        }
-        .auth-card .subtitle {
-            text-align: center;
-            color: #999;
-            font-size: 14px;
-            margin-bottom: 28px;
-        }
-        .auth-form { display: flex; flex-direction: column; gap: 16px; }
-        .auth-form .form-group { display: flex; flex-direction: column; gap: 4px; }
-        .auth-form .form-group label {
-            font-size: 13px;
-            color: #aaa;
-            font-weight: 500;
-        }
-        .auth-form input[type="text"],
-        .auth-form input[type="password"] {
-            width: 100%;
-            padding: 14px 16px;
-            font-size: 16px;
-            background: rgba(255,255,255,.08);
-            color: #fff;
-            border: 1px solid rgba(255,255,255,.15);
-            border-radius: 6px;
-            transition: border .2s, background .2s;
-        }
-        .auth-form input:focus {
-            border-color: #e50914;
-            background: rgba(255,255,255,.12);
-        }
-        .auth-form input::placeholder { color: #666; }
-        .auth-form input.error { border-color: #e74c3c; }
-        .auth-form button[type="submit"] {
-            padding: 16px;
-            font-size: 16px;
-            font-weight: 700;
-            margin-top: 4px;
-        }
-        .auth-card .auth-footer {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 14px;
-            color: #888;
-        }
-        .auth-card .auth-footer a { color: #fff; font-weight: 600; }
-        .auth-card .auth-footer a:hover { text-decoration: underline; }
-
-        /* ── Flash messages ── */
-        .flash { max-width: 600px; margin: 80px auto 10px; padding: 12px 20px; border-radius: 6px; font-size: 14px; text-align: center; }
-        .flash.error { background: #e74c3c; color: white; }
-        .flash.success { background: #2ecc71; color: white; }
-        .flash.info { background: #3498db; color: white; }
-
-        /* ── Responsive ── */
-        @media (max-width: 768px) {
-            .navbar { padding: 12px 16px; }
-            .navbar .nav-links { display: none; }
-            .hamburger { display: flex; }
-            .auth-card { padding: 32px 24px; }
-            .auth-card h1 { font-size: 26px; }
-            .auth-form button[type="submit"] { padding: 16px; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
-
-<!-- ─── Navigation ─── -->
-<nav class="navbar">
-    <a href="/" class="logo">TV Tracker</a>
-    <div class="nav-links">
-        <a href="/login">Login</a>
-    </div>
-    <button class="hamburger" onclick="toggleNav()" aria-label="Menu">
-        <span></span><span></span><span></span>
-    </button>
-</nav>
-
-<!-- ─── Mobile Nav Dropdown ─── -->
-<div class="mobile-nav-dropdown" id="mobileNav">
-    <a href="/">🏠 Home</a>
-    <a href="/login">🔑 Login</a>
-</div>
-
-<!-- ─── Flash Messages ─── -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-    {% for category, message in messages %}
-    <div class="flash {{ category }}">{{ message }}</div>
-    {% endfor %}
-{% endif %}
-{% endwith %}
-
-<!-- ─── Auth Card ─── -->
+    @media (max-width: 768px) {
+        .auth-card { padding: 32px 24px; }
+    }
+</style>
+{% endblock %}
+{% block content %}
 <div class="auth-wrapper">
     <div class="auth-card">
         <h1>Create Account</h1>
-        <p class="subtitle">Start tracking your favorite shows and movies</p>
+        <p class="subtitle">Start tracking your shows and movies</p>
         <form method="POST" class="auth-form">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
@@ -185,7 +86,7 @@
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="At least 6 characters" required>
+                <input type="password" id="password" name="password" placeholder="Choose a password (min 6 chars)" required>
             </div>
             <div class="form-group">
                 <label for="password_confirm">Confirm Password</label>
@@ -196,20 +97,4 @@
         <p class="auth-footer">Already have an account? <a href="/login">Log in</a></p>
     </div>
 </div>
-
-<script>
-function toggleNav() {
-    const menu = document.getElementById('mobileNav');
-    const hamburger = document.querySelector('.hamburger');
-    menu.classList.toggle('open');
-    hamburger.classList.toggle('active');
-}
-document.querySelectorAll('.mobile-nav-dropdown a').forEach(link => {
-    link.addEventListener('click', () => {
-        document.getElementById('mobileNav').classList.remove('open');
-        document.querySelector('.hamburger').classList.remove('active');
-    });
-});
-</script>
-</body>
-</html>
+{% endblock %}

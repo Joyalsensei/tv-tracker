@@ -1,192 +1,117 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>My Shows - TV Tracker</title>
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding: 30px;
-            overflow-x: hidden;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        input, button { padding: 8px; font-size: 15px; border-radius: 6px; border: none; }
-        button { background: #e50914; color: white; cursor: pointer; transition: background .2s; }
-        button:hover { background: #f40612; }
+{% extends "base.html" %}
+{% block title %}My Shows - TV Tracker{% endblock %}
+{% block head_extra %}
+<style>
+    .show-status-icon {
+        font-size: 11px; color: var(--text-dim); margin-top: 2px;
+    }
+    .remove-link {
+        font-size: 11px; color: #e74c3c;
+        background: none !important; border: none !important;
+        padding: 6px 0 !important; cursor: pointer;
+        opacity: 0; transition: opacity var(--transition);
+    }
+    .card:hover .remove-link { opacity: 1; }
+    @media (hover: none) {
+        .remove-link { opacity: 1; }
+    }
 
-        h1 { font-size: 28px; margin-bottom: 4px; }
-        .sub-nav { color: #999; font-size: 14px; margin-bottom: 20px; display: flex; gap: 16px; flex-wrap: wrap; }
-        .sub-nav a { padding: 8px 0; }
-        .sub-nav a:hover { color: #fff; }
-
-        /* ── Grid: CSS grid instead of flexbox for even spacing ── */
-        .show-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 16px;
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        .show-card {
-            text-align: center;
-            transition: transform .2s;
-            width: 100%;
-        }
-        .show-card:hover { transform: scale(1.05); }
-        .show-card a { display: block; }
-        .show-card img {
-            width: 100%;
-            border-radius: 8px;
-            aspect-ratio: 2/3;
-            object-fit: cover;
-        }
-        .show-card .card-title {
-            margin-top: 6px;
-            font-size: 14px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .show-card .card-rating {
-            font-size: 12px;
-            color: #f5c518;
-        }
-        .show-card .progress-bg {
-            background: #333;
-            border-radius: 4px;
-            height: 6px;
-            margin-top: 6px;
-            overflow: hidden;
-        }
-        .show-card .progress-fill {
-            background: #f5c518;
-            height: 100%;
-            transition: width .5s ease;
-        }
-        .show-card .progress-text {
-            font-size: 11px;
-            color: #999;
-            margin-top: 2px;
-        }
-        .remove-link {
-            display: inline-block;
-            margin-top: 4px;
-            font-size: 11px;
-            color: #ff6b6b;
-            background: none !important;
-            border: none !important;
-            padding: 6px 0 !important;
-            cursor: pointer;
-        }
-        .remove-link:hover { text-decoration: underline; }
-
-        h2 {
-            margin-top: 30px;
-            margin-bottom: 10px;
-            color: #eee;
-            font-size: 20px;
-        }
-        .empty-state {
-            color: #999;
-            margin-top: 20px;
-        }
-
-        @media (max-width: 600px) {
-            body { padding: 16px; }
-            .show-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-            .show-card .card-title { font-size: 12px; }
-            .show-card .card-rating { font-size: 11px; }
-            h1 { font-size: 22px; }
-        }
-        @media (max-width: 400px) {
-            .show-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
+    .section-header { margin-top: 32px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
     <h1>📺 My Shows</h1>
-    <div class="sub-nav">
-        <a href="/">🏠 Home</a>
-        <a href="/upcoming">📅 Upcoming</a>
-        <a href="/mymovies">🎬 My Movies</a>
-        <a href="/history">📜 History</a>
-        <a href="/stats">📊 Stats</a>
-    </div>
+    <div class="subtitle">All your tracked TV shows in one place</div>
+</div>
 
-    {% if shows %}
-    <h2>▶️ In Progress</h2>
-    <ul class="show-grid">
-    {% for show in shows %}
-        <li class="show-card">
-            <a href="/show/{{ show[0] }}">
-                {% if show[2] %}
-                <img src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
-                {% else %}
-                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#666;">No Poster</div>
-                {% endif %}
-            </a>
-            <p class="card-title">{{ show[1] }}</p>
-            <span class="card-rating">★ {{ "%.1f"|format(show[10]|float) if show[10] else "N/A" }}</span>
-            {% set status_icons = {'plan_to_watch':'📋','watching':'📺','on_hold':'⏸️','dropped':'🗑️','completed':'✅'} %}
-            {% if show[5] %}
-            <p style="font-size:11px;color:#999;margin-top:2px;">{{ status_icons.get(show[5], '') }} {{ show[5]|replace('_',' ')|title }}</p>
+{% if shows %}
+<div class="section-header">
+    <span>▶️ In Progress</span>
+    <span class="count">{{ shows|length }}</span>
+</div>
+<ul class="card-grid">
+{% for show in shows %}
+    <li class="card">
+        <a href="/show/{{ show[0] }}">
+            {% if show[2] %}
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
+            {% else %}
+            <div class="card-poster-placeholder">No Poster</div>
             {% endif %}
-            <div class="progress-bg">
-                <div class="progress-fill" style="width: {{ show[9] }}%;"></div>
+        </a>
+        {% set status_icons = {'plan_to_watch':'📋','watching':'📺','on_hold':'⏸️','dropped':'🗑️','completed':'✅'} %}
+        {% if show[5] %}
+        <div class="card-badge">{{ status_icons.get(show[5], '') }} {{ show[5]|replace('_',' ')|title }}</div>
+        {% endif %}
+        <div class="card-body">
+            <div class="card-title">{{ show[1] }}</div>
+            <div class="card-meta">
+                <span class="card-rating">★ {{ "%.1f"|format(show[10]|float) if show[10] else "N/A" }}</span>
+                <span class="card-year">{{ show[3] }}</span>
             </div>
-            <p class="progress-text">{{ show[7] }}/{{ show[8] }} episodes</p>
-            <form method="POST" action="/remove/{{ show[0] }}" style="display:inline;" onsubmit="return confirm('Remove this show?')">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="remove-link">Remove</button>
-            </form>
-        </li>
-    {% endfor %}
-    </ul>
-    {% endif %}
+            <div class="card-progress">
+                <div class="progress-bg">
+                    <div class="progress-fill" style="width: {{ show[9] }}%;"></div>
+                </div>
+                <div class="progress-text">{{ show[7] }}/{{ show[8] }} episodes • {{ show[9] }}%</div>
+            </div>
+        </div>
+        <form method="POST" action="/remove/{{ show[0] }}" style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);" onsubmit="return confirm('Remove this show?')">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="remove-link">Remove</button>
+        </form>
+    </li>
+{% endfor %}
+</ul>
+{% endif %}
 
-    {% if completed %}
-    <h2>✅ Completed</h2>
-    <ul class="show-grid">
-    {% for show in completed %}
-        <li class="show-card">
-            <a href="/show/{{ show[0] }}">
-                {% if show[2] %}
-                <img src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
-                {% else %}
-                <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#666;">No Poster</div>
-                {% endif %}
-            </a>
-            <p class="card-title">{{ show[1] }}</p>
-            <span class="card-rating">★ {{ "%.1f"|format(show[10]|float) if show[10] else "N/A" }}</span>
-            {% set status_icons = {'plan_to_watch':'📋','watching':'📺','on_hold':'⏸️','dropped':'🗑️','completed':'✅'} %}
-            {% if show[5] %}
-            <p style="font-size:11px;color:#999;margin-top:2px;">{{ status_icons.get(show[5], '') }} {{ show[5]|replace('_',' ')|title }}</p>
+{% if completed %}
+<div class="section-header">
+    <span>✅ Completed</span>
+    <span class="count">{{ completed|length }}</span>
+</div>
+<ul class="card-grid">
+{% for show in completed %}
+    <li class="card">
+        <a href="/show/{{ show[0] }}">
+            {% if show[2] %}
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
+            {% else %}
+            <div class="card-poster-placeholder">No Poster</div>
             {% endif %}
-            <div class="progress-bg">
-                <div class="progress-fill" style="width: {{ show[9] }}%;"></div>
+        </a>
+        {% set status_icons = {'plan_to_watch':'📋','watching':'📺','on_hold':'⏸️','dropped':'🗑️','completed':'✅'} %}
+        {% if show[5] %}
+        <div class="card-badge">{{ status_icons.get(show[5], '') }} {{ show[5]|replace('_',' ')|title }}</div>
+        {% endif %}
+        <div class="card-body">
+            <div class="card-title">{{ show[1] }}</div>
+            <div class="card-meta">
+                <span class="card-rating">★ {{ "%.1f"|format(show[10]|float) if show[10] else "N/A" }}</span>
             </div>
-            <p class="progress-text">{{ show[7] }}/{{ show[8] }} episodes</p>
-            <form method="POST" action="/remove/{{ show[0] }}" style="display:inline;" onsubmit="return confirm('Remove this show?')">
-                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="remove-link">Remove</button>
-            </form>
-        </li>
-    {% endfor %}
-    </ul>
-    {% endif %}
+            <div class="card-progress">
+                <div class="progress-bg">
+                    <div class="progress-fill" style="width: 100%;"></div>
+                </div>
+                <div class="progress-text">{{ show[7] }}/{{ show[8] }} episodes • Done!</div>
+            </div>
+        </div>
+        <form method="POST" action="/remove/{{ show[0] }}" style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);" onsubmit="return confirm('Remove this show?')">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="remove-link">Remove</button>
+        </form>
+    </li>
+{% endfor %}
+</ul>
+{% endif %}
 
-    {% if not shows and not completed %}
-    <p class="empty-state">No shows yet. <a href="/">Search and add some!</a></p>
-    {% endif %}
-</body>
-</html>
+{% if not shows and not completed %}
+<div class="empty-state">
+    <div class="empty-icon">📺</div>
+    <p>No shows yet</p>
+    <p style="margin-top:4px;font-size:13px;color:var(--text-dim);">Search for shows and start tracking your progress!</p>
+    <a href="/"><button class="btn btn-primary">Browse Shows</button></a>
+</div>
+{% endif %}
+{% endblock %}

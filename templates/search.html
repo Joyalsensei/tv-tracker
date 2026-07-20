@@ -1,241 +1,50 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>TV Tracker - Track What You Watch</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            background: #141414;
-            color: #eee;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            padding-bottom: 60px;
-            overflow-x: hidden;
-        }
-        a { color: #66d9ef; text-decoration: none; }
-        input, button, select { padding: 8px 14px; font-size: 15px; border-radius: 6px; border: none; outline: none; }
-        button { background: #e50914; color: white; cursor: pointer; transition: background .2s; }
-        button:hover { background: #f40612; }
-        select { background: #333; color: #eee; cursor: pointer; }
+{% extends "base.html" %}
+{% block title %}TV Tracker - Track What You Watch{% endblock %}
+{% block head_extra %}
+<style>
+    .hero {
+        position: relative;
+        min-height: 60vh;
+        display: flex; align-items: center; justify-content: center;
+        padding: 40px 20px 60px;
+        margin: -24px -32px 0;
+        overflow: hidden;
+    }
+    .hero-bg {
+        position: absolute; inset: 0;
+        background-size: cover; background-position: center top;
+        filter: brightness(.25) blur(2px);
+        z-index: 0;
+    }
+    .hero-bg::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(0deg, var(--bg) 0%, transparent 50%, rgba(15,15,15,.4) 100%);
+    }
+    .hero-content {
+        position: relative; z-index: 1;
+        text-align: center; max-width: 650px;
+    }
+    .hero h1 { font-size: 48px; font-weight: 800; margin-bottom: 8px; }
+    .hero .tagline { color: var(--text-secondary); font-size: 17px; margin-bottom: 28px; }
 
-        /* ── Navigation Bar ── */
-        .navbar {
-            display: flex; align-items: center; justify-content: space-between;
-            padding: 16px 40px; background: linear-gradient(180deg, rgba(0,0,0,.95) 0%, transparent 100%);
-            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-        }
-        .navbar .logo { font-size: 24px; font-weight: 800; color: #e50914; letter-spacing: -1px; }
-        .navbar .nav-links { display: flex; gap: 20px; align-items: center; }
-        .navbar .nav-links a { color: #ccc; font-size: 14px; transition: color .2s; padding: 8px 0; }
-        .navbar .nav-links a:hover { color: #fff; }
-        .navbar .user-area { display: flex; gap: 12px; align-items: center; }
-        .navbar .user-area a { font-size: 13px; }
+    @media (max-width: 768px) {
+        .hero { margin: -16px -16px 0; padding: 20px 16px 40px; min-height: 50vh; }
+        .hero h1 { font-size: 32px; }
+        .hero .tagline { font-size: 15px; }
+    }
+</style>
+{% endblock %}
+{% block content %}
 
-        /* ── Hamburger Menu (mobile) ── */
-        .hamburger { display: none; flex-direction: column; gap: 4px; cursor: pointer; padding: 4px; background: none; border: none; }
-        .hamburger span { display: block; width: 24px; height: 2px; background: #ccc; border-radius: 2px; transition: .3s; }
-        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); }
-        .hamburger.active span:nth-child(2) { opacity: 0; }
-        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); }
-
-        /* ── Hero Section ── */
-        .hero {
-            position: relative;
-            min-height: 70vh;
-            display: flex; align-items: center; justify-content: center;
-            padding: 100px 40px 60px;
-            overflow: hidden;
-        }
-        .hero-bg {
-            position: absolute; inset: 0;
-            background-size: cover; background-position: center top;
-            filter: brightness(.3) blur(2px);
-            z-index: 0;
-        }
-        .hero-bg::after {
-            content: ''; position: absolute; inset: 0;
-            background: linear-gradient(0deg, #141414 0%, transparent 50%, rgba(20,20,20,.4) 100%);
-        }
-        .hero-content {
-            position: relative; z-index: 1;
-            text-align: center; max-width: 700px;
-        }
-        .hero h1 { font-size: 52px; font-weight: 800; margin-bottom: 8px; }
-        .hero .tagline { color: #bbb; font-size: 18px; margin-bottom: 28px; }
-        .search-form { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-        .search-form input[type="text"] {
-            width: 320px; max-width: 80vw; padding: 12px 18px; font-size: 16px;
-            background: rgba(255,255,255,.12); color: #fff; border: 1px solid rgba(255,255,255,.2);
-            transition: border .2s;
-        }
-        .search-form input[type="text"]:focus { border-color: #e50914; background: rgba(255,255,255,.18); }
-        .search-form input[type="text"]::placeholder { color: #888; }
-        .search-form button { padding: 12px 28px; font-size: 16px; font-weight: 600; }
-        .search-form select { padding: 12px 14px; background: rgba(255,255,255,.12); color: #eee; border: 1px solid rgba(255,255,255,.2); }
-
-        /* ── Category Shelf ── */
-        .shelf { margin: 32px 40px; }
-        .shelf-header {
-            display: flex; align-items: center; justify-content: space-between;
-            margin-bottom: 12px;
-        }
-        .shelf-header h2 { font-size: 22px; font-weight: 700; }
-        .shelf-header .see-all { font-size: 13px; color: #999; transition: color .2s; }
-        .shelf-header .see-all:hover { color: #fff; }
-        .shelf-scroll {
-            display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px;
-            scroll-behavior: smooth; scroll-snap-type: x mandatory;
-            -webkit-overflow-scrolling: touch;
-        }
-        .shelf-scroll::-webkit-scrollbar { height: 6px; }
-        .shelf-scroll::-webkit-scrollbar-track { background: #222; border-radius: 3px; }
-        .shelf-scroll::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-        .shelf-scroll::-webkit-scrollbar-thumb:hover { background: #888; }
-
-        /* ── Card ── */
-        .card {
-            flex: 0 0 auto; width: 150px; scroll-snap-align: start;
-            transition: transform .25s ease, box-shadow .25s ease;
-            cursor: pointer; border-radius: 6px; overflow: hidden;
-            position: relative;
-        }
-        .card:hover { transform: scale(1.08); z-index: 10; }
-        .card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: 6px; display: block; }
-        .card .card-info {
-            padding: 6px 4px 0;
-            font-size: 13px; line-height: 1.3;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-        }
-        .card .card-title { color: #eee; font-weight: 600; }
-        .card .card-meta { color: #999; font-size: 11px; display: flex; justify-content: space-between; margin-top: 2px; }
-        .card .card-rating { color: #f5c518; }
-        .card .card-year { color: #777; }
-        .card .card-overlay {
-            position: absolute; inset: 0;
-            background: rgba(0,0,0,.5);
-            display: flex; align-items: center; justify-content: center;
-            opacity: 0; transition: opacity .25s;
-            border-radius: 6px;
-        }
-        .card:hover .card-overlay { opacity: 1; }
-        .card .card-overlay .add-btn {
-            background: #e50914; color: #fff; border: none;
-            padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer;
-        }
-
-        /* ── Flash messages ── */
-        .flash { max-width: 600px; margin: 80px auto 10px; padding: 12px 20px; border-radius: 6px; font-size: 14px; text-align: center; }
-        .flash.error { background: #e74c3c; color: white; }
-        .flash.success { background: #2ecc71; color: white; }
-        .flash.info { background: #3498db; color: white; }
-
-        /* ── Mobile Nav Dropdown ── */
-        .mobile-nav-dropdown {
-            display: none;
-            position: fixed; top: 56px; left: 0; right: 0;
-            background: rgba(20,20,20,.98);
-            padding: 16px 24px;
-            z-index: 99;
-            border-bottom: 1px solid #333;
-        }
-        .mobile-nav-dropdown.open { display: block; }
-        .mobile-nav-dropdown a {
-            display: block; padding: 14px 0;
-            font-size: 16px; color: #ccc;
-            border-bottom: 1px solid #222;
-        }
-        .mobile-nav-dropdown a:last-child { border-bottom: none; }
-        .mobile-nav-dropdown a:hover { color: #fff; }
-
-        /* ── Responsive ── */
-        @media (max-width: 768px) {
-            .navbar { padding: 12px 16px; }
-            .navbar .nav-links { display: none; }
-            .navbar .user-area { display: none; }
-            .hamburger { display: flex; }
-            .hero { padding: 80px 20px 40px; min-height: 60vh; }
-            .hero h1 { font-size: 34px; }
-            .shelf { margin: 20px 16px; }
-            .card { width: 130px; }
-            .search-form input[type="text"] { width: 100%; max-width: 100%; font-size: 16px; }
-            .search-form button { padding: 14px 24px; font-size: 16px; }
-            .search-form select { padding: 14px; font-size: 16px; }
-        }
-        @media (max-width: 480px) {
-            .hero h1 { font-size: 28px; }
-            .hero .tagline { font-size: 15px; }
-            .shelf-header h2 { font-size: 18px; }
-            .card { width: 110px; }
-        }
-    </style>
-    <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#141414">
-    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-
-    <link rel="apple-touch-icon" href="/static/icon.svg">
-</head>
-<body>
-
-<!-- ─── Navigation ─── -->
-<nav class="navbar">
-    <a href="/" class="logo">TV Tracker</a>
-    {% if session.user_id %}
-    <div class="nav-links">
-        <a href="/myshows">My Shows</a>
-        <a href="/upcoming">Upcoming</a>
-        <a href="/mymovies">My Movies</a>
-        <a href="/history">History</a>
-    </div>
-    <div class="user-area">
-        <span style="color:#999;font-size:13px;margin-right:8px;">👤 {{ session.get('username', 'User') }}</span>
-        <a href="/logout" style="color:#e50914;font-size:13px;">Logout</a>
-    </div>
-    {% else %}
-    <div class="user-area">
-        <a href="/login">Login</a>
-        <a href="/signup"><button style="padding:6px 16px;font-size:13px;">Sign Up</button></a>
-    </div>
-    {% endif %}
-    <button class="hamburger" onclick="toggleNav()" aria-label="Menu">
-        <span></span><span></span><span></span>
-    </button>
-</nav>
-
-<!-- ─── Mobile Nav Dropdown ─── -->
-<div class="mobile-nav-dropdown" id="mobileNav">
-    {% if session.user_id %}
-    <a style="color:#888;font-size:14px;padding:14px 0;border-bottom:1px solid #222;">👤 {{ session.get('username', 'User') }}</a>
-    <a href="/myshows">📺 My Shows</a>
-    <a href="/upcoming">📅 Upcoming</a>
-    <a href="/mymovies">🎬 My Movies</a>
-    <a href="/history">📜 History</a>
-    <a href="/logout" style="color:#e50914;">🚪 Logout</a>
-    {% else %}
-    <a href="/login">🔑 Login</a>
-    <a href="/signup" style="color:#e50914;font-weight:600;">✨ Sign Up</a>
-    {% endif %}
-</div>
-
-<!-- ─── Flash Messages ─── -->
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% if messages %}
-    {% for category, message in messages %}
-    <div class="flash {{ category }}">{{ message }}</div>
-    {% endfor %}
-{% endif %}
-{% endwith %}
-
-<!-- ─── Hero / Search ─── -->
 {% if trending_tv %}
 <div class="hero">
     <div class="hero-bg" style="background-image: url('https://image.tmdb.org/t/p/original{{ trending_tv[0].backdrop_path }}');"></div>
     <div class="hero-content">
         <h1>🎬 TV Tracker</h1>
         <p class="tagline">Track what you watch. Never lose your place.</p>
-        <form action="/search" method="get" class="search-form" autocomplete="off">
+        <form action="/search" method="get" class="search-form" autocomplete="off" style="max-width:500px;margin:0 auto;">
             <input type="text" name="query" placeholder="Search for a show or movie..." autocomplete="off">
-            <select name="type">
+            <select name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
                 <option value="tv">TV Show</option>
                 <option value="movie">Movie</option>
             </select>
@@ -244,13 +53,13 @@
     </div>
 </div>
 {% else %}
-<div class="hero" style="min-height:50vh;">
+<div class="hero" style="min-height:40vh;">
     <div class="hero-content">
         <h1>🎬 TV Tracker</h1>
         <p class="tagline">Track what you watch. Never lose your place.</p>
-        <form action="/search" method="get" class="search-form" autocomplete="off">
+        <form action="/search" method="get" class="search-form" autocomplete="off" style="max-width:500px;margin:0 auto;">
             <input type="text" name="query" placeholder="Search for a show or movie..." autocomplete="off">
-            <select name="type">
+            <select name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
                 <option value="tv">TV Show</option>
                 <option value="movie">Movie</option>
             </select>
@@ -259,8 +68,6 @@
     </div>
 </div>
 {% endif %}
-
-<!-- ─── Category Shelves ─── -->
 
 {% macro shelf(title, items) %}
 {% if items %}
@@ -270,21 +77,20 @@
     </div>
     <div class="shelf-scroll">
         {% for item in items %}
-        <a href="/show/{{ item.id }}" class="card">
+        <a href="/show/{{ item.id }}" class="shelf-card">
             {% if item.poster_path %}
             <img src="https://image.tmdb.org/t/p/w200{{ item.poster_path }}"
-                 alt="{{ item.name or item.title }}"
-                 loading="lazy">
+                 alt="{{ item.name or item.title }}" loading="lazy">
             {% else %}
-            <div style="width:100%;aspect-ratio:2/3;background:#333;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#666;">
+            <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">
                 No Poster
             </div>
             {% endif %}
-            <div class="card-info">
-                <div class="card-title">{{ item.name or item.title }}</div>
-                <div class="card-meta">
-                    <span class="card-rating">★ {{ "%.1f"|format(item.vote_average|float) if item.vote_average is not none else "N/A" }}</span>
-                    <span class="card-year">{{ (item.first_air_date or item.release_date or "")[:4] }}</span>
+            <div class="shelf-info">
+                <div class="shelf-title">{{ item.name or item.title }}</div>
+                <div class="shelf-meta">
+                    <span>★ {{ "%.1f"|format(item.vote_average|float) if item.vote_average is not none else "N/A" }}</span>
+                    <span>{{ (item.first_air_date or item.release_date or "")[:4] }}</span>
                 </div>
             </div>
         </a>
@@ -304,20 +110,4 @@
 {{ shelf(shelf_data.label, shelf_data.results) }}
 {% endfor %}
 
-<script>
-function toggleNav() {
-    const menu = document.getElementById('mobileNav');
-    const hamburger = document.querySelector('.hamburger');
-    menu.classList.toggle('open');
-    hamburger.classList.toggle('active');
-}
-// Close menu when tapping a link
-document.querySelectorAll('.mobile-nav-dropdown a').forEach(link => {
-    link.addEventListener('click', () => {
-        document.getElementById('mobileNav').classList.remove('open');
-        document.querySelector('.hamburger').classList.remove('active');
-    });
-});
-</script>
-</body>
-</html>
+{% endblock %}
