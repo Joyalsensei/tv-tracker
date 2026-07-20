@@ -169,6 +169,11 @@
             .card { width: 110px; }
         }
     </style>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#141414">
+    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <link rel="apple-touch-icon" href="/static/icon.svg">
 </head>
 <body>
 
@@ -178,6 +183,7 @@
     {% if session.user_id %}
     <div class="nav-links">
         <a href="/myshows">My Shows</a>
+        <a href="/upcoming">Upcoming</a>
         <a href="/mymovies">My Movies</a>
         <a href="/history">History</a>
     </div>
@@ -201,6 +207,7 @@
     {% if session.user_id %}
     <a style="color:#888;font-size:14px;padding:14px 0;border-bottom:1px solid #222;">👤 {{ session.get('username', 'User') }}</a>
     <a href="/myshows">📺 My Shows</a>
+    <a href="/upcoming">📅 Upcoming</a>
     <a href="/mymovies">🎬 My Movies</a>
     <a href="/history">📜 History</a>
     <a href="/logout" style="color:#e50914;">🚪 Logout</a>

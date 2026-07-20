@@ -1,0 +1,21 @@
+{
+  "name": "TV Tracker - Track What You Watch",
+  "short_name": "TV Tracker",
+  "description": "Track your TV shows and movies — what you've watched, what's next.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#141414",
+  "theme_color": "#141414",
+  "categories": ["entertainment", "productivity"],
+  "lang": "en-US",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": []
+}

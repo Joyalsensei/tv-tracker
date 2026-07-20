@@ -107,13 +107,20 @@
             .show-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
         }
     </style>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#141414">
+    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <link rel="apple-touch-icon" href="/static/icon.svg">
 </head>
 <body>
     <h1>📺 My Shows</h1>
     <div class="sub-nav">
         <a href="/">🏠 Home</a>
+        <a href="/upcoming">📅 Upcoming</a>
         <a href="/mymovies">🎬 My Movies</a>
         <a href="/history">📜 History</a>
+        <a href="/stats">📊 Stats</a>
     </div>
 
     {% if shows %}
@@ -129,11 +136,15 @@
                 {% endif %}
             </a>
             <p class="card-title">{{ show[1] }}</p>
-            <span class="card-rating">★ {{ "%.1f"|format(show[8]|float) if show[8] else "N/A" }}</span>
+            <span class="card-rating">★ {{ "%.1f"|format(show[10]|float) if show[10] else "N/A" }}</span>
+            {% set status_icons = {'plan_to_watch':'📋','watching':'📺','on_hold':'⏸️','dropped':'🗑️','completed':'✅'} %}
+            {% if show[5] %}
+            <p style="font-size:11px;color:#999;margin-top:2px;">{{ status_icons.get(show[5], '') }} {{ show[5]|replace('_',' ')|title }}</p>
+            {% endif %}
             <div class="progress-bg">
-                <div class="progress-fill" style="width: {{ show[7] }}%;"></div>
+                <div class="progress-fill" style="width: {{ show[9] }}%;"></div>
             </div>
-            <p class="progress-text">{{ show[5] }}/{{ show[6] }} episodes</p>
+            <p class="progress-text">{{ show[7] }}/{{ show[8] }} episodes</p>
             <form method="POST" action="/remove/{{ show[0] }}" style="display:inline;" onsubmit="return confirm('Remove this show?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="remove-link">Remove</button>
@@ -156,11 +167,15 @@
                 {% endif %}
             </a>
             <p class="card-title">{{ show[1] }}</p>
-            <span class="card-rating">★ {{ "%.1f"|format(show[8]|float) if show[8] else "N/A" }}</span>
+            <span class="card-rating">★ {{ "%.1f"|format(show[10]|float) if show[10] else "N/A" }}</span>
+            {% set status_icons = {'plan_to_watch':'📋','watching':'📺','on_hold':'⏸️','dropped':'🗑️','completed':'✅'} %}
+            {% if show[5] %}
+            <p style="font-size:11px;color:#999;margin-top:2px;">{{ status_icons.get(show[5], '') }} {{ show[5]|replace('_',' ')|title }}</p>
+            {% endif %}
             <div class="progress-bg">
-                <div class="progress-fill" style="width: {{ show[7] }}%;"></div>
+                <div class="progress-fill" style="width: {{ show[9] }}%;"></div>
             </div>
-            <p class="progress-text">{{ show[5] }}/{{ show[6] }} episodes</p>
+            <p class="progress-text">{{ show[7] }}/{{ show[8] }} episodes</p>
             <form method="POST" action="/remove/{{ show[0] }}" style="display:inline;" onsubmit="return confirm('Remove this show?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="remove-link">Remove</button>

@@ -63,6 +63,20 @@ def init_db(db_path=None):
         )
     ''')
 
+    # 🆕 Migration: add user_status column for Show Status Management
+    try:
+        cursor.execute('ALTER TABLE shows ADD COLUMN user_status TEXT DEFAULT NULL')
+        print("  Added column: shows.user_status")
+    except Exception:
+        pass  # Column already exists
+
+    # 🆕 Migration: add last_watched_at column for sorting by recent activity
+    try:
+        cursor.execute('ALTER TABLE shows ADD COLUMN last_watched_at TEXT DEFAULT NULL')
+        print("  Added column: shows.last_watched_at")
+    except Exception:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     print("Database initialized")

@@ -75,6 +75,11 @@
             font-weight: 600;
         }
     </style>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#141414">
+    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <link rel="apple-touch-icon" href="/static/icon.svg">
 </head>
 <body>
 
@@ -151,8 +156,82 @@
         </table>
     </div>
 
+    <div class="section" style="margin-top:30px;">
+        <h2>🔧 Maintenance</h2>
+        <div style="background:#1a1a1a;border-radius:10px;padding:20px;border:1px solid #2a2a2a;">
+            <p style="color:#ccc;font-size:14px;margin-bottom:12px;">
+                Recalculate <code>total_episodes</code> for all TV shows using accurate TMDB season endpoint data.
+                Fixes the episode count bug where ongoing shows (like One Piece) showed watched &gt; total.
+            </p>
+            <button id="btn-repair" onclick="runRepair()" style="background:#e50914;color:white;padding:10px 24px;font-size:15px;border:none;border-radius:6px;cursor:pointer;">
+                🔧 Repair Episode Counts
+            </button>
+            <div id="repair-status" style="margin-top:12px;font-size:13px;color:#999;"></div>
+            <div id="repair-results" style="margin-top:12px;max-height:300px;overflow-y:auto;font-size:12px;"></div>
+        </div>
+    </div>
+
     <p style="color:#555;font-size:12px;margin-top:40px;text-align:center;">
         Only the first registered user (you) can see this page.
     </p>
+
+<script>
+function runRepair() {
+    const btn = document.getElementById('btn-repair');
+    const status = document.getElementById('repair-status');
+    const results = document.getElementById('repair-results');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Repairing...';
+    status.textContent = 'Fetching episode counts from TMDB...';
+    results.innerHTML = '';
+
+    const formData = new FormData();
+    formData.append('_csrf_token', '{{ csrf_token() }}');
+
+    fetch('/admin/repair_episodes', {method: 'POST', body: formData})
+        .then(res => res.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = '🔧 Repair Episode Counts';
+
+            if (data.status === 'ok') {
+                status.innerHTML = '<strong style="color:#2ecc71;">✅ Done!</strong> '
+                    + data.total + ' shows checked. '
+                    + '<span style="color:#f39c12;">' + data.fixed + ' updated</span>'
+                    + (data.corrupted > 0 ? ', <span style="color:#e74c3c;">' + data.corrupted + ' corrupted (repaired)</span>' : '')
+                    + '.';
+
+                let html = '<table style="width:100%;font-size:12px;">'
+                    + '<tr style="color:#999;"><th>User</th><th>Show</th><th>Watched</th><th>Total</th><th>Status</th></tr>';
+                data.results.forEach(function(r) {
+                    const color = r.status === 'corrupted' ? '#e74c3c' : (r.status === 'updated' ? '#f39c12' : '#2ecc71');
+                    html += '<tr>'
+                        + '<td>' + escapeHtml(r.user) + '</td>'
+                        + '<td>' + escapeHtml(r.show) + '</td>'
+                        + '<td>' + r.watched + '</td>'
+                        + '<td>' + r.new_total + '</td>'
+                        + '<td style="color:' + color + ';">' + r.status + '</td>'
+                        + '</tr>';
+                });
+                html += '</table>';
+                results.innerHTML = html;
+            } else {
+                status.innerHTML = '<strong style="color:#e74c3c;">Error:</strong> ' + escapeHtml(data.message);
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = '🔧 Repair Episode Counts';
+            status.innerHTML = '<strong style="color:#e74c3c;">Error:</strong> ' + escapeHtml(err.message);
+        });
+}
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(text || ''));
+    return div.innerHTML;
+}
+</script>
 </body>
 </html>

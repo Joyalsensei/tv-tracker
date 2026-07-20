@@ -167,6 +167,11 @@
             .season-row a { font-size: 12px; }
         }
     </style>
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#141414">
+    <meta name="apple-mobile-web-app-capable" content="yes">    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+    <link rel="apple-touch-icon" href="/static/icon.svg">
 </head>
 <body>
 
@@ -239,6 +244,15 @@
                 {% if is_in_shows %}
                     <span class="badge-added">✓ Already Added</span>
                     <button class="btn-secondary" onclick="markAllSeasonsWatched({{ show.id }})">Mark All Seasons Watched</button>
+                    <!-- 🆕 Status Selector -->
+                    <select id="status-select" onchange="setStatus({{ show.id }})" style="background:#333;color:#eee;padding:10px 14px;font-size:14px;border-radius:6px;border:1px solid #555;cursor:pointer;">
+                        <option value="" {% if not user_status %}selected{% endif %}>📋 Select Status</option>
+                        <option value="plan_to_watch" {% if user_status == 'plan_to_watch' %}selected{% endif %}>📋 Plan to Watch</option>
+                        <option value="watching" {% if user_status == 'watching' %}selected{% endif %}>📺 Watching</option>
+                        <option value="on_hold" {% if user_status == 'on_hold' %}selected{% endif %}>⏸️ On Hold</option>
+                        <option value="dropped" {% if user_status == 'dropped' %}selected{% endif %}>🗑️ Dropped</option>
+                        <option value="completed" {% if user_status == 'completed' %}selected{% endif %}>✅ Completed</option>
+                    </select>
                 {% else %}
                     <a href="/add/{{ show.id }}"><button>+ Add to My Shows</button></a>
                 {% endif %}
@@ -317,6 +331,27 @@
 // ── Global CSRF token (captured once) ──
 const CSRF_TOKEN = '{{ csrf_token() }}';
 const SHOW_ID = {{ show.id }};
+
+// ── Mark all seasons watched ──
+// ── Set tracking status ──
+function setStatus(showId) {
+    const select = document.getElementById('status-select');
+    const formData = new FormData();
+    formData.append('_csrf_token', CSRF_TOKEN);
+    formData.append('status', select.value);
+    fetch('/show/' + showId + '/set_status', {method: 'POST', body: formData})
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                // Update URL to reflect new status (for sharing/bookmarking)
+                const badge = document.querySelector('.badge-added');
+                if (badge) {
+                    badge.textContent = '\u2713 ' + (select.options[select.selectedIndex].text || 'Added');
+                }
+            }
+        })
+        .catch(err => console.error('Error setting status:', err));
+}
 
 // ── Mark all seasons watched ──
 function markAllSeasonsWatched(showId) {
