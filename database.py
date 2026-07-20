@@ -83,6 +83,13 @@ def init_db(db_path=None):
     except Exception:
         pass  # Column already exists
 
+    # Migration: add total_episodes column for episode progress tracking
+    try:
+        cursor.execute('ALTER TABLE shows ADD COLUMN total_episodes INTEGER DEFAULT 0')
+        print("  Added column: shows.total_episodes")
+    except Exception:
+        pass  # Column already exists
+
     conn.commit()
     conn.close()
     print(f"Database initialized at {db_path}")

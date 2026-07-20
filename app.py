@@ -455,7 +455,13 @@ def add_show(show_id):
             if cursor.fetchone():
                 flash(f"{escape(show['name'])} is already in your shows.", "info")
             else:
-                total_ep, _ = get_show_episode_count(show["id"])
+                # Fetch episode count gracefully — if it fails (timeout, rate limit),
+                # still add the show and let My Shows refresh it later.
+                total_ep = 0
+                try:
+                    total_ep, _ = get_show_episode_count(show["id"])
+                except Exception as ep_err:
+                    logger.error(f"Could not fetch episode count for {show['id']}: {ep_err}")
                 exe(cursor, '''
                     INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
