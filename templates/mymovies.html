@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% block title %}My Movies - TV Tracker{% endblock %}
-{% block head_extra %}
-<style>
+{% block head_extra %}    <style>
     .watch-btn-card {
         display: block;
         width: calc(100% - 8px);
@@ -21,14 +20,28 @@
         color: white;
     }
     .watch-btn-card:hover { filter: brightness(1.15); }
-    .remove-link {
-        font-size: 11px; color: #e74c3c;
-        background: none !important; border: none !important;
-        padding: 6px 0 !important; cursor: pointer;
-        opacity: 0; transition: opacity var(--transition);
-        display: block; margin: 0 auto;
+
+    /* ── Remove button — moved BELOW the card body, away from poster ── */
+    .card-remove-area {
+        padding: 4px 4px 2px;
     }
-    .card:hover .remove-link { opacity: 1; }
+    .remove-link {
+        display: block; width: 100%;
+        padding: 8px 12px; font-size: 13px; font-weight: 600;
+        color: #e74c3c;
+        background: rgba(231,76,60,.08);
+        border: 1px solid rgba(231,76,60,.25);
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: all var(--transition);
+        text-align: center;
+        opacity: 0.7;
+    }
+    .remove-link:hover {
+        opacity: 1;
+        background: rgba(231,76,60,.15);
+        border-color: #e74c3c;
+    }
 </style>
 {% endblock %}
 {% block content %}
@@ -59,9 +72,11 @@
             <button class="watch-btn-card{% if movie[5] %} watched{% endif %}" onclick="toggleWatch({{ movie[0] }})" id="watch-btn-{{ movie[0] }}">
                 {% if movie[5] %}✓ Watched{% else %}Mark as Watched{% endif %}
             </button>
+        </div>
+        <div class="card-remove-area">
             <form method="POST" action="/remove/{{ movie[0] }}" onsubmit="return confirm('Remove this movie?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="remove-link">Remove</button>
+                <button type="submit" class="remove-link">✕ Remove</button>
             </form>
         </div>
     </li>

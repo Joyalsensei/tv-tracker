@@ -108,7 +108,7 @@
     <div class="shelf-header"><h2>🎯 You Might Also Like</h2></div>
     <div class="shelf-scroll">
         {% for rec in recommendations %}
-        <a href="/show/{{ rec.id }}" class="shelf-card">
+        <a href="/movie/{{ rec.id }}" class="shelf-card">
             {% if rec.poster_path %}
             <img src="https://image.tmdb.org/t/p/w200{{ rec.poster_path }}" alt="{{ rec.title or rec.name }}" loading="lazy">
             {% else %}
@@ -129,7 +129,7 @@
     <div class="shelf-header"><h2>🔗 Similar Movies</h2></div>
     <div class="shelf-scroll">
         {% for sim in similar %}
-        <a href="/show/{{ sim.id }}" class="shelf-card">
+        <a href="/movie/{{ sim.id }}" class="shelf-card">
             {% if sim.poster_path %}
             <img src="https://image.tmdb.org/t/p/w200{{ sim.poster_path }}" alt="{{ sim.title or sim.name }}" loading="lazy">
             {% else %}

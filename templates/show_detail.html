@@ -33,7 +33,19 @@
         transition: background var(--transition); border-radius: 6px; padding: 14px 12px;
     }
     .season-row:hover { background: var(--bg-card); }
-    .season-row h3 { font-size: 15px; margin: 0; }
+    .season-row h3 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
+    .season-row .season-check {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 22px; height: 22px; border-radius: 50%;
+        font-size: 12px; font-weight: 700;
+        transition: all .3s ease; flex-shrink: 0;
+    }
+    .season-row .season-check.watched-all {
+        background: var(--accent-green); color: #fff;
+    }
+    .season-row .season-check.not-watched {
+        background: rgba(255,255,255,.08); color: var(--text-dim);
+    }
 
     .ep-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
     .ep-dot {
@@ -140,12 +152,15 @@
             {% endif %}
         </div>
 
-        <div class="season-list">
+        <div class="season-list" id="seasonList">
             <h3 style="margin-bottom:10px;font-size:16px;">📋 Seasons</h3>
             {% for season in show.seasons %}
             {% if season.season_number != 0 %}
-            <div class="season-row">
-                <h3>Season {{ season.season_number }} ({{ season.episode_count }} episodes)</h3>
+            <div class="season-row" data-season="{{ season.season_number }}" id="season-row-{{ season.season_number }}">
+                <h3>
+                    <span class="season-check not-watched" id="season-check-{{ season.season_number }}">✓</span>
+                    Season {{ season.season_number }} ({{ season.episode_count }} episodes)
+                </h3>
                 <div style="display:flex;align-items:center;gap:10px;">
                     {% if is_in_shows %}
                     <button class="btn-ep-track" onclick="toggleSeasonEpisodes({{ show.id }}, {{ season.season_number }}, this)" title="Quick-mark episodes">⚡ Quick Mark</button>
@@ -288,13 +303,51 @@ function toggleEpisodeInline(showId, seasonNumber, episodeNumber, dot) {
     fetch('/watch/' + showId + '/' + seasonNumber + '/' + episodeNumber, {method: 'POST', body: formData})
         .then(res => res.json())
         .then(data => {
-            if (data.status === 'watched') dot.classList.add('watched');
-            else dot.classList.remove('watched');
+            if (data.status === 'watched') {
+                dot.classList.add('watched');
+                if (data.auto_caught_up) {
+                    showToast('✅ Caught up! Auto-marked ' + data.auto_marked_count + ' prior episode(s).', 'success');
+                }
+            } else {
+                dot.classList.remove('watched');
+            }
             if (_activeSeasonEpBtn) {
                 const season = parseInt(_activeSeasonEpBtn.textContent.match(/\d+/));
                 if (!isNaN(season)) toggleSeasonEpisodes(showId, season, _activeSeasonEpBtn);
             }
+            refreshSeasonCheckmarks(showId);
         }).catch(err => console.error('Error:', err));
 }
+
+function refreshSeasonCheckmarks(showId) {
+    // Fetch accurate season totals from the SEASON endpoints (not the stale show endpoint)
+    const totalsPromise = fetch('/api/show/' + showId + '/season-totals').then(r => r.json());
+    const watchedPromise = fetch('/api/show/' + showId + '/watched').then(r => r.json());
+
+    Promise.all([totalsPromise, watchedPromise])
+        .then(function([seasonTotals, watchedData]) {
+            if (!seasonTotals || !watchedData || !watchedData.season_counts) return;
+            document.querySelectorAll('[id^="season-row-"]').forEach(function(row) {
+                const seasonNum = parseInt(row.dataset.season);
+                const checkEl = document.getElementById('season-check-' + seasonNum);
+                if (!checkEl) return;
+                const total = seasonTotals[seasonNum] || 0;
+                const watched = (watchedData.season_counts[seasonNum] || 0);
+                if (total > 0 && watched >= total) {
+                    checkEl.className = 'season-check watched-all';
+                    checkEl.title = 'All ' + total + ' episodes watched';
+                } else {
+                    checkEl.className = 'season-check not-watched';
+                    checkEl.title = watched + '/' + total + ' watched';
+                }
+            });
+        }).catch(function() {});
+}
+
+// Initialize season checkmarks on page load
+// We need to wait a tick for the DOM to be ready, then check all seasons
+document.addEventListener('DOMContentLoaded', function() {
+    refreshSeasonCheckmarks(SHOW_ID);
+});
 </script>
 {% endblock %}

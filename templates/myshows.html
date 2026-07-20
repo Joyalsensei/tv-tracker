@@ -1,19 +1,30 @@
 {% extends "base.html" %}
 {% block title %}My Shows - TV Tracker{% endblock %}
-{% block head_extra %}
-<style>
+{% block head_extra %}    <style>
     .show-status-icon {
         font-size: 11px; color: var(--text-dim); margin-top: 2px;
     }
-    .remove-link {
-        font-size: 11px; color: #e74c3c;
-        background: none !important; border: none !important;
-        padding: 6px 0 !important; cursor: pointer;
-        opacity: 0; transition: opacity var(--transition);
+
+    /* ── Remove button — moved BELOW the card body, away from poster ── */
+    .card-remove-area {
+        padding: 6px 4px 4px;
     }
-    .card:hover .remove-link { opacity: 1; }
-    @media (hover: none) {
-        .remove-link { opacity: 1; }
+    .remove-link {
+        display: block; width: 100%;
+        padding: 8px 12px; font-size: 13px; font-weight: 600;
+        color: #e74c3c;
+        background: rgba(231,76,60,.08);
+        border: 1px solid rgba(231,76,60,.25);
+        border-radius: var(--radius);
+        cursor: pointer;
+        transition: all var(--transition);
+        text-align: center;
+        opacity: 0.7;
+    }
+    .remove-link:hover {
+        opacity: 1;
+        background: rgba(231,76,60,.15);
+        border-color: #e74c3c;
     }
 
     .section-header { margin-top: 32px; }
@@ -57,10 +68,12 @@
                 <div class="progress-text">{{ show[7] }}/{{ show[8] }} episodes • {{ show[9] }}%</div>
             </div>
         </div>
-        <form method="POST" action="/remove/{{ show[0] }}" style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);" onsubmit="return confirm('Remove this show?')">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="remove-link">Remove</button>
-        </form>
+        <div class="card-remove-area">
+            <form method="POST" action="/remove/{{ show[0] }}" onsubmit="return confirm('Remove this show?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="remove-link">✕ Remove</button>
+            </form>
+        </div>
     </li>
 {% endfor %}
 </ul>
@@ -97,10 +110,12 @@
                 <div class="progress-text">{{ show[7] }}/{{ show[8] }} episodes • Done!</div>
             </div>
         </div>
-        <form method="POST" action="/remove/{{ show[0] }}" style="position:absolute;bottom:4px;left:50%;transform:translateX(-50%);" onsubmit="return confirm('Remove this show?')">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="remove-link">Remove</button>
-        </form>
+        <div class="card-remove-area">
+            <form method="POST" action="/remove/{{ show[0] }}" onsubmit="return confirm('Remove this show?')">
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="remove-link">✕ Remove</button>
+            </form>
+        </div>
     </li>
 {% endfor %}
 </ul>

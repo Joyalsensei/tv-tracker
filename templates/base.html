@@ -25,7 +25,7 @@
             --radius-lg: 12px;
             --shadow: 0 4px 20px rgba(0,0,0,.4);
             --transition: .2s ease;
-            --nav-height: 60px;
+            --bottom-nav-height: 64px;
             --max-width: 1400px;
         }
 
@@ -35,8 +35,7 @@
             background: var(--bg);
             color: var(--text);
             font-family: 'Segoe UI', -apple-system, Arial, sans-serif;
-            padding-top: var(--nav-height);
-            padding-bottom: 40px;
+            padding-bottom: calc(var(--bottom-nav-height) + 16px + env(safe-area-inset-bottom, 0px));
             overflow-x: hidden;
             min-height: 100vh;
             -webkit-font-smoothing: antialiased;
@@ -45,142 +44,105 @@
         a:hover { color: #fff; }
         img { max-width: 100%; }
 
-        /* ── Navigation ── */
-        .navbar {
-            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-            height: var(--nav-height);
-            display: flex; align-items: center;
-            justify-content: space-between;
-            padding: 0 32px;
-            background: rgba(15,15,15,.92);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border);
-            transition: background var(--transition);
+        /* ── Bottom Navigation ── */
+        .bottom-nav {
+            position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+            height: var(--bottom-nav-height);
+            display: flex; align-items: center; justify-content: space-around;
+            background: rgba(15,15,15,.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-top: 1px solid var(--border);
+            padding: 0 4px;
+            padding-bottom: env(safe-area-inset-bottom, 0);
         }
-        .navbar-left { display: flex; align-items: center; gap: 32px; }
-        .navbar .logo {
-            font-size: 22px; font-weight: 800;
-            color: var(--accent); letter-spacing: -.5px;
-        }
-        .navbar .logo span { color: var(--text); font-weight: 300; }
-
-        .nav-links { display: flex; gap: 4px; align-items: center; }
-        .nav-links a {
-            color: var(--text-secondary); font-size: 14px;
-            padding: 8px 14px; border-radius: var(--radius);
+        .bottom-nav a {
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            padding: 6px 12px; border-radius: var(--radius);
+            color: var(--text-secondary); font-size: 10px;
             transition: all var(--transition);
+            min-width: 56px;
+            text-decoration: none;
             position: relative;
         }
-        .nav-links a:hover { color: var(--text); background: rgba(255,255,255,.06); }
-        .nav-links a.active {
-            color: #fff;
-            background: rgba(229,9,20,.15);
+        .bottom-nav a .nav-icon {
+            font-size: 22px; line-height: 1;
+            transition: transform var(--transition);
         }
-        .nav-links a.active::after {
+        .bottom-nav a .nav-label {
+            font-size: 10px; font-weight: 500;
+            white-space: nowrap;
+        }
+        .bottom-nav a:hover {
+            color: var(--text);
+        }
+        .bottom-nav a:hover .nav-icon {
+            transform: translateY(-2px) scale(1.1);
+        }
+        .bottom-nav a.active {
+            color: var(--accent);
+        }
+        .bottom-nav a.active .nav-icon {
+            transform: translateY(-2px);
+        }
+        .bottom-nav a.active::after {
             content: '';
-            position: absolute; bottom: 2px; left: 50%; transform: translateX(-50%);
-            width: 20px; height: 2px; background: var(--accent); border-radius: 1px;
+            position: absolute; top: -1px; left: 50%; transform: translateX(-50%);
+            width: 24px; height: 2px;
+            background: var(--accent); border-radius: 1px;
+        }
+        .bottom-nav a.active .nav-label {
+            color: var(--accent); font-weight: 600;
         }
 
-        .navbar-right { display: flex; align-items: center; gap: 12px; }
-        .navbar-right .username {
+        /* ── Top bar (small header with logo + user) ── */
+        .top-bar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 32px;
+            background: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+        .top-bar .logo {
+            font-size: 20px; font-weight: 800;
+            color: var(--accent); letter-spacing: -.5px;
+        }
+        .top-bar .logo span { color: var(--text); font-weight: 300; }
+        .top-bar-right { display: flex; align-items: center; gap: 12px; }
+        .top-bar-right .username {
             color: var(--text-secondary); font-size: 13px;
-            padding: 6px 12px; background: rgba(255,255,255,.05);
+            padding: 4px 10px; background: rgba(255,255,255,.05);
             border-radius: 20px; white-space: nowrap;
         }
-        .navbar-right .username .avatar {
+        .top-bar-right .username .avatar {
             display: inline-flex; align-items: center; justify-content: center;
             width: 24px; height: 24px; border-radius: 50%;
             background: var(--accent); color: #fff;
             font-size: 12px; font-weight: 700; margin-right: 6px;
         }
         .btn-logout {
-            padding: 6px 14px; font-size: 13px; border-radius: 20px;
+            padding: 5px 12px; font-size: 12px; border-radius: 20px;
             border: 1px solid var(--border-light); background: transparent;
             color: var(--text-secondary); cursor: pointer;
             transition: all var(--transition);
         }
         .btn-logout:hover { border-color: var(--accent); color: var(--accent); background: rgba(229,9,20,.08); }
         .btn-signup {
-            padding: 7px 18px; font-size: 13px; border-radius: 20px;
+            padding: 6px 16px; font-size: 12px; border-radius: 20px;
             border: none; background: var(--accent); color: #fff;
             cursor: pointer; transition: all var(--transition); font-weight: 600;
         }
         .btn-signup:hover { background: var(--accent-hover); transform: translateY(-1px); }
         .btn-login {
-            padding: 7px 18px; font-size: 13px; border-radius: 20px;
+            padding: 6px 16px; font-size: 12px; border-radius: 20px;
             border: 1px solid var(--border-light); background: transparent;
             color: var(--text); cursor: pointer;
             transition: all var(--transition);
         }
         .btn-login:hover { border-color: var(--text); }
 
-        /* ── Hamburger ── */
-        .hamburger {
-            display: none; flex-direction: column; gap: 4px;
-            cursor: pointer; padding: 6px; background: none; border: none;
-        }
-        .hamburger span {
-            display: block; width: 22px; height: 2px;
-            background: var(--text-secondary); border-radius: 2px;
-            transition: all .3s ease;
-        }
-        .hamburger.active span:nth-child(1) { transform: rotate(45deg) translate(4px, 4px); background: var(--accent); }
-        .hamburger.active span:nth-child(2) { opacity: 0; }
-        .hamburger.active span:nth-child(3) { transform: rotate(-45deg) translate(4px, -4px); background: var(--accent); }
-
-        /* ── Mobile Drawer ── */
-        .drawer-overlay {
-            display: none; position: fixed; inset: 0; z-index: 998;
-            background: rgba(0,0,0,.5);
-            opacity: 0; transition: opacity .3s ease;
-        }
-        .drawer-overlay.open { display: block; opacity: 1; }
-
-        .drawer {
-            position: fixed; top: 0; left: 0; bottom: 0; z-index: 999;
-            width: 280px; max-width: 80vw;
-            background: var(--bg); border-right: 1px solid var(--border);
-            transform: translateX(-100%); transition: transform .3s cubic-bezier(.22,1,.36,1);
-            padding: 20px 0; overflow-y: auto;
-        }
-        .drawer.open { transform: translateX(0); }
-        .drawer-header {
-            padding: 0 20px 16px; border-bottom: 1px solid var(--border);
-            margin-bottom: 8px;
-        }
-        .drawer-header .logo { font-size: 20px; font-weight: 800; color: var(--accent); }
-        .drawer-user {
-            display: flex; align-items: center; gap: 10px;
-            padding: 12px 20px; margin: 0 12px; border-radius: var(--radius);
-            background: rgba(255,255,255,.04); margin-bottom: 8px;
-        }
-        .drawer-user .avatar {
-            width: 32px; height: 32px; border-radius: 50%;
-            background: var(--accent); color: #fff;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 14px;
-        }
-        .drawer a {
-            display: flex; align-items: center; gap: 12px;
-            padding: 14px 24px; color: var(--text-secondary);
-            font-size: 15px; transition: all var(--transition);
-            border-left: 3px solid transparent;
-        }
-        .drawer a:hover { background: rgba(255,255,255,.04); color: var(--text); }
-        .drawer a.active {
-            background: rgba(229,9,20,.08); color: #fff;
-            border-left-color: var(--accent); font-weight: 600;
-        }
-        .drawer a .icon { font-size: 18px; width: 24px; text-align: center; }
-        .drawer-divider {
-            height: 1px; background: var(--border); margin: 8px 20px;
-        }
-
         /* ── Toast Notifications ── */
         .toast-container {
-            position: fixed; top: calc(var(--nav-height) + 12px); right: 16px;
+            position: fixed; top: 12px; right: 16px;
             z-index: 2000; display: flex; flex-direction: column; gap: 8px;
             pointer-events: none;
         }
@@ -244,7 +206,7 @@
         /* ── Grid ── */
         .card-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+            grid-template-columns: repeat(3, 1fr);
             gap: 16px;
             list-style: none;
             padding: 0; margin: 0;
@@ -303,18 +265,25 @@
             font-size: 10px; color: var(--text-dim); margin-top: 2px;
         }
 
-        /* Card overlay (for hover actions) */
+        /* Card overlay (for add-to-list button on search cards) */
         .card-overlay {
             position: absolute; top: 0; left: 0; right: 0;
             padding: 10px;
             background: linear-gradient(180deg, rgba(0,0,0,.7) 0%, transparent 50%);
-            opacity: 0; transition: opacity .3s ease;
+            opacity: 1; transition: opacity .3s ease;
+            display: flex; align-items: flex-start; justify-content: flex-end;
         }
-        .card:hover .card-overlay { opacity: 1; }
+        .card-overlay span {
+            background: var(--accent); color: #fff;
+            padding: 6px 14px; border-radius: 4px;
+            font-size: 12px; font-weight: 600;
+            box-shadow: 0 2px 8px rgba(0,0,0,.4);
+        }
+        .card-overlay:hover span { background: var(--accent-hover); }
 
         /* Card status badge */
         .card-badge {
-            position: absolute; top: 8px; right: 8px;
+            position: absolute; top: 8px; left: 8px;
             padding: 3px 8px; border-radius: 4px;
             font-size: 10px; font-weight: 600;
             background: rgba(0,0,0,.7); color: var(--text);
@@ -460,19 +429,18 @@
 
         /* ── Responsive ── */
         @media (max-width: 768px) {
-            .navbar { padding: 0 16px; }
-            .nav-links { display: none; }
-            .navbar-right .username { display: none; }
-            .hamburger { display: flex; }
+            .top-bar { padding: 10px 16px; }
+            .top-bar .logo { font-size: 18px; }
+            .top-bar-right .username { display: none; }
             .page-content { padding: 16px; }
             .page-header h1 { font-size: 22px; }
             .card-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
-            .shelf-card { width: 120px; }
+            .shelf-card-wrapper,
+            .shelf-card { width: 100px; }
             .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        }
-        @media (max-width: 480px) {
-            .card-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-            .card-title { font-size: 12px; }
+            .bottom-nav a { min-width: 48px; padding: 4px 8px; }
+            .bottom-nav a .nav-icon { font-size: 20px; }
+            .bottom-nav a .nav-label { font-size: 9px; }
         }
 
         /* ── Flash fallback (if JS not working) ── */
@@ -490,22 +458,11 @@
 <!-- ─── Toast Container ─── -->
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- ─── Navigation ─── -->
-<nav class="navbar">
-    <div class="navbar-left">
-        <a href="/" class="logo">TV<span>Tracker</span></a>
-        {% if session.user_id %}
-        <div class="nav-links">
-            <a href="/myshows" class="{% if request.path == '/myshows' %}active{% endif %}">My Shows</a>
-            <a href="/upcoming" class="{% if request.path == '/upcoming' %}active{% endif %}">Upcoming</a>
-            <a href="/mymovies" class="{% if request.path == '/mymovies' %}active{% endif %}">My Movies</a>
-            <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}">Stats</a>
-            <a href="/history" class="{% if request.path == '/history' %}active{% endif %}">History</a>
-        </div>
-        {% endif %}
-    </div>
+<!-- ─── Top Bar ─── -->
+<div class="top-bar">
+    <a href="/" class="logo">TV<span>Tracker</span></a>
     {% if session.user_id %}
-    <div class="navbar-right">
+    <div class="top-bar-right">
         <span class="username">
             <span class="avatar">{{ session.get('username', 'U')[0]|upper }}</span>
             {{ session.get('username', 'User') }}
@@ -513,64 +470,47 @@
         <a href="/logout"><button class="btn-logout">Logout</button></a>
     </div>
     {% else %}
-    <div class="navbar-right">
+    <div class="top-bar-right">
         <a href="/login"><button class="btn-login">Login</button></a>
         <a href="/signup"><button class="btn-signup">Sign Up</button></a>
     </div>
-    {% endif %}        <button class="hamburger" onclick="toggleDrawer()" aria-label="Open navigation menu" id="hamburgerBtn">
-        <span></span><span></span><span></span>
-    </button>
-</nav>
-
-<!-- ─── Mobile Drawer ─── -->
-<div class="drawer-overlay" id="drawerOverlay" onclick="toggleDrawer()" role="presentation" aria-label="Close menu"></div>
-<div class="drawer" id="drawer">
-    <div class="drawer-header">
-        <span class="logo">TV<span style="color:var(--text);font-weight:300;">Tracker</span></span>
-    </div>
-    {% if session.user_id %}
-    <div class="drawer-user">
-        <span class="avatar">{{ session.get('username', 'U')[0]|upper }}</span>
-        <div>
-            <div style="font-size:14px;font-weight:600;">{{ session.get('username', 'User') }}</div>
-            <div style="font-size:11px;color:var(--text-dim);">Logged in</div>
-        </div>
-    </div>
     {% endif %}
+</div>
 
+<!-- ─── Bottom Navigation ─── -->
+<nav class="bottom-nav">
     <a href="/" class="{% if request.path == '/' %}active{% endif %}">
-        <span class="icon">🏠</span> Home
+        <span class="nav-icon">🏠</span>
+        <span class="nav-label">Explore</span>
     </a>
     {% if session.user_id %}
     <a href="/myshows" class="{% if request.path == '/myshows' %}active{% endif %}">
-        <span class="icon">📺</span> My Shows
+        <span class="nav-icon">📺</span>
+        <span class="nav-label">Shows</span>
     </a>
     <a href="/upcoming" class="{% if request.path == '/upcoming' %}active{% endif %}">
-        <span class="icon">📅</span> Upcoming
+        <span class="nav-icon">📅</span>
+        <span class="nav-label">Upcoming</span>
     </a>
     <a href="/mymovies" class="{% if request.path == '/mymovies' %}active{% endif %}">
-        <span class="icon">🎬</span> My Movies
+        <span class="nav-icon">🎬</span>
+        <span class="nav-label">Movies</span>
     </a>
     <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}">
-        <span class="icon">📊</span> Stats
-    </a>
-    <a href="/history" class="{% if request.path == '/history' %}active{% endif %}">
-        <span class="icon">📜</span> History
-    </a>
-    <div class="drawer-divider"></div>
-    <a href="/logout" style="color:var(--accent);">
-        <span class="icon">🚪</span> Logout
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Profile</span>
     </a>
     {% else %}
-    <div class="drawer-divider"></div>
-    <a href="/login">
-        <span class="icon">🔑</span> Login
+    <a href="/login" class="{% if request.path == '/login' %}active{% endif %}">
+        <span class="nav-icon">🔑</span>
+        <span class="nav-label">Login</span>
     </a>
-    <a href="/signup" style="color:var(--accent);font-weight:600;">
-        <span class="icon">✨</span> Sign Up
+    <a href="/signup" class="{% if request.path == '/signup' %}active{% endif %}">
+        <span class="nav-icon">✨</span>
+        <span class="nav-label">Sign Up</span>
     </a>
     {% endif %}
-</div>
+</nav>
 
 <!-- ─── Flash Messages (hidden, converted to JS toasts) ─── -->
 {% with messages = get_flashed_messages(with_categories=true) %}
@@ -585,20 +525,6 @@
 </main>
 
 <script>
-// ── Mobile Drawer ──
-function toggleDrawer() {
-    document.getElementById('drawer').classList.toggle('open');
-    document.getElementById('drawerOverlay').classList.toggle('open');
-    document.getElementById('hamburgerBtn').classList.toggle('active');
-    document.body.style.overflow = document.getElementById('drawer').classList.contains('open') ? 'hidden' : '';
-}
-// Close drawer when clicking a link
-document.querySelectorAll('.drawer a').forEach(link => {
-    link.addEventListener('click', () => {
-        if (window.innerWidth <= 768) toggleDrawer();
-    });
-});
-
 // ── Toast Notifications ──
 function showToast(message, type) {
     const container = document.getElementById('toastContainer');

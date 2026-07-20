@@ -35,7 +35,7 @@
 <ul class="card-grid">
 {% for show in results %}
     <li class="card">
-        <a href="/show/{{ show.id }}">
+        <a href="{{ '/movie/' if search_type == 'movie' else '/show/' }}{{ show.id }}">
             {% if show.poster_path %}
             <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ show.poster_path }}" alt="{{ show.name or show.title }}" loading="lazy">
             {% else %}
@@ -49,8 +49,8 @@
                 <span class="card-year">{{ (show.first_air_date or show.release_date or "")[:4] }}</span>
             </div>
         </div>
-        <a href="{{ '/add_movie/' if search_type == 'movie' else '/add/' }}{{ show.id }}" class="card-overlay" style="text-align:center;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);opacity:0;">
-            <span style="background:var(--accent);color:#fff;padding:6px 18px;border-radius:4px;font-size:13px;font-weight:600;">+ Add</span>
+        <a href="{{ '/add_movie/' if search_type == 'movie' else '/add/' }}{{ show.id }}" class="card-overlay">
+            <span>+ Add</span>
         </a>
     </li>
 {% endfor %}

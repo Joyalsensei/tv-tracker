@@ -132,20 +132,8 @@ function markWatched(el) {
         .then(data => {
             if (data.status === "watched") {
                 el.classList.add('watched'); el.textContent = '✓';
-                if (data.is_last_episode && season > 1) {
-                    if (confirm(`✅ You finished Season ${season}! Mark ALL episodes from ${season-1} previous season${season > 2 ? 's' : ''} as watched too?`)) {
-                        const form = new FormData();
-                        form.append('_csrf_token', '{{ csrf_token() }}');
-                        fetch(`/mark_previous_seasons/${show}/${season}`, {method: 'POST', body: form})
-                            .then(r => r.json()).then(d => { if (d.status === 'ok') location.reload(); });
-                        return;
-                    }
-                }
-                if (confirm(`Mark all episodes up to Episode ${episode} in Season ${season} as watched too?`)) {
-                    const form = new FormData();
-                    form.append('_csrf_token', '{{ csrf_token() }}');
-                    fetch(`/mark_season_watched/${show}/${season}/${episode}`, {method: 'POST', body: form})
-                        .then(r => r.json()).then(d => { if (d.status === 'ok') location.reload(); });
+                if (data.auto_caught_up) {
+                    showToast('✅ Auto-marked ' + data.auto_marked_count + ' prior episode(s)!', 'success');
                 }
             } else {
                 el.classList.remove('watched'); el.textContent = '';

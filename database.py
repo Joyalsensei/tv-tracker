@@ -73,22 +73,51 @@ def init_db(db_path=None):
     try:
         cursor.execute('ALTER TABLE shows ADD COLUMN user_status TEXT DEFAULT NULL')
         print("  Added column: shows.user_status")
-    except Exception:
-        pass  # Column already exists
+    except Exception as e:
+        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+            pass  # Column already exists
+        else:
+            print(f"  ⚠️  Migration warning (shows.user_status): {e}")
 
     # Migration: add last_watched_at column for sorting by recent activity
     try:
         cursor.execute('ALTER TABLE shows ADD COLUMN last_watched_at TEXT DEFAULT NULL')
         print("  Added column: shows.last_watched_at")
-    except Exception:
-        pass  # Column already exists
+    except Exception as e:
+        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+            pass
+        else:
+            print(f"  ⚠️  Migration warning (shows.last_watched_at): {e}")
 
     # Migration: add total_episodes column for episode progress tracking
     try:
         cursor.execute('ALTER TABLE shows ADD COLUMN total_episodes INTEGER DEFAULT 0')
         print("  Added column: shows.total_episodes")
-    except Exception:
-        pass  # Column already exists
+    except Exception as e:
+        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+            pass
+        else:
+            print(f"  ⚠️  Migration warning (shows.total_episodes): {e}")
+
+    # Migration: add google_id column for Google OAuth login
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN google_id TEXT UNIQUE DEFAULT NULL')
+        print("  Added column: users.google_id")
+    except Exception as e:
+        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+            pass
+        else:
+            print(f"  ⚠️  Migration warning (users.google_id): {e}")
+
+    # Migration: add email column for Google OAuth users
+    try:
+        cursor.execute('ALTER TABLE users ADD COLUMN email TEXT DEFAULT NULL')
+        print("  Added column: users.email")
+    except Exception as e:
+        if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
+            pass
+        else:
+            print(f"  ⚠️  Migration warning (users.email): {e}")
 
     conn.commit()
     conn.close()

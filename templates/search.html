@@ -69,7 +69,7 @@
 </div>
 {% endif %}
 
-{% macro shelf(title, items) %}
+{% macro shelf(title, items, is_movie=false) %}
 {% if items %}
 <div class="shelf">
     <div class="shelf-header">
@@ -77,37 +77,43 @@
     </div>
     <div class="shelf-scroll">
         {% for item in items %}
-        <a href="/show/{{ item.id }}" class="shelf-card">
-            {% if item.poster_path %}
-            <img src="https://image.tmdb.org/t/p/w200{{ item.poster_path }}"
-                 alt="{{ item.name or item.title }}" loading="lazy">
-            {% else %}
-            <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">
-                No Poster
-            </div>
-            {% endif %}
-            <div class="shelf-info">
-                <div class="shelf-title">{{ item.name or item.title }}</div>
-                <div class="shelf-meta">
-                    <span>★ {{ "%.1f"|format(item.vote_average|float) if item.vote_average is not none else "N/A" }}</span>
-                    <span>{{ (item.first_air_date or item.release_date or "")[:4] }}</span>
+        <div class="shelf-card-wrapper" style="position:relative;flex:0 0 auto;width:140px;scroll-snap-align:start;">
+            <a href="/{{ 'movie' if is_movie else 'show' }}/{{ item.id }}" class="shelf-card">
+                {% if item.poster_path %}
+                <img src="https://image.tmdb.org/t/p/w200{{ item.poster_path }}"
+                     alt="{{ item.name or item.title }}" loading="lazy">
+                {% else %}
+                <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">
+                    No Poster
                 </div>
-            </div>
-        </a>
+                {% endif %}
+                <div class="shelf-info">
+                    <div class="shelf-title">{{ item.name or item.title }}</div>
+                    <div class="shelf-meta">
+                        <span>★ {{ "%.1f"|format(item.vote_average|float) if item.vote_average is not none else "N/A" }}</span>
+                        <span>{{ (item.first_air_date or item.release_date or "")[:4] }}</span>
+                    </div>
+                </div>
+            </a>
+            <!-- Add button overlay on shelf cards -->
+            <a href="/{{ 'add_movie' if is_movie else 'add' }}/{{ item.id }}" class="card-overlay" style="border-radius:var(--radius) var(--radius) 0 0;">
+                <span>+ Add</span>
+            </a>
+        </div>
         {% endfor %}
     </div>
 </div>
 {% endif %}
 {% endmacro %}
 
-{{ shelf("🔥 Trending TV Shows", trending_tv) }}
-{{ shelf("🔥 Trending Movies", trending_movies) }}
-{{ shelf("📺 Popular TV Shows", popular_tv) }}
-{{ shelf("🏆 Top Rated", top_rated) }}
-{{ shelf("🎬 Popular Movies", popular_movies) }}
+{{ shelf("🔥 Trending TV Shows", trending_tv, is_movie=false) }}
+{{ shelf("🔥 Trending Movies", trending_movies, is_movie=true) }}
+{{ shelf("📺 Popular TV Shows", popular_tv, is_movie=false) }}
+{{ shelf("🏆 Top Rated", top_rated, is_movie=false) }}
+{{ shelf("🎬 Popular Movies", popular_movies, is_movie=true) }}
 
 {% for shelf_data in genre_shelves %}
-{{ shelf(shelf_data.label, shelf_data.results) }}
+{{ shelf(shelf_data.label, shelf_data.results, is_movie=false) }}
 {% endfor %}
 
 {% endblock %}

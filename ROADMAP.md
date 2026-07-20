@@ -26,9 +26,9 @@
 - Add a nice app icon
 
 ### 2. Favorites ❤️
-- DB table already exists (favorites)
 - Add heart button on show/movie detail pages
 - Create a My Favorites page
+- (Note: Favorites table not yet created — will need a database migration)
 
 ### 3. Show Status Management
 - Let users set custom statuses: Plan to Watch, Watching, On Hold, Dropped, Completed

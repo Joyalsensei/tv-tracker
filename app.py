@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from pathlib import Path
 from markupsafe import escape
+from authlib.integrations.flask_client import OAuth
 
 # Log ALL errors to stdout so we can see them in Render logs
 logging.basicConfig(level=logging.ERROR, stream=sys.stdout, force=True)
@@ -44,6 +45,27 @@ else:
 API_KEY = os.environ.get("TMDB_API_KEY")
 DATABASE_PATH = get_db_path()
 
+# ── Google OAuth Config ──────────────────────────────────
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+OAUTHLIB_INSECURE_TRANSPORT = os.environ.get("OAUTHLIB_INSECURE_TRANSPORT", "0")
+
+# Google OAuth is available if both env vars are set
+google_oauth_available = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+
+if google_oauth_available:
+    oauth = OAuth(app)
+    oauth.register(
+        name='google',
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+        client_kwargs={'scope': 'openid profile email'}
+    )
+    print("  ✅ Google OAuth configured!")
+else:
+    print("  ⚠️  Google OAuth not configured (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)")
+
 # Security: ensure required secrets are configured
 if not API_KEY:
     raise RuntimeError(
@@ -51,7 +73,12 @@ if not API_KEY:
         "Copy .env.example to .env and set TMDB_API_KEY to your TMDB API key."
     )
 
-# Log all 500 errors with full traceback to Render logs
+# Log all errors with full traceback to Render logs
+@app.errorhandler(404)
+def handle_404(error):
+    return render_template('404.html'), 404
+
+
 @app.errorhandler(500)
 def handle_500(error):
     logger.error(f"500 ERROR: {error}")
@@ -572,8 +599,8 @@ def my_shows():
                 # show_row[5] = user_status, show_row[6] = last_watched_at
                 shows_with_progress.append(show_row + (watched_count, total_episodes, percent, rating))
 
+            # Persist any total_episodes updates for ongoing shows
             conn.commit()
-
         finally:
             conn.close()
 
@@ -627,7 +654,62 @@ def my_movies():
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  REMOVE
+#  MOVIE DETAIL (dedicated route — prevents TV/movie ID collision)
+# ═══════════════════════════════════════════════════════════════════
+@app.route('/movie/<int:movie_id>')
+@login_required
+def movie_detail(movie_id):
+    """Dedicated movie detail page. TMDB IDs are not globally unique
+    across movies and TV shows, so we MUST use a separate route to
+    avoid serving a TV show's page when a movie was clicked.
+    """
+    try:
+        movie_url = f"https://api.themoviedb.org/3/movie/{movie_id}"
+        movie_data = tmdb_get(movie_url, {"api_key": API_KEY, "append_to_response": "recommendations,similar,videos"})
+
+        if not movie_data or not movie_data.get("title"):
+            flash("Couldn't load movie details.", "error")
+            return redirect('/mymovies')
+
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'SELECT movie_tmdb_id FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (movie_id, session['user_id']))
+            is_watched = cursor.fetchone() is not None
+        finally:
+            conn.close()
+
+        providers = tmdb_get(
+            f"https://api.themoviedb.org/3/movie/{movie_id}/watch/providers",
+            {"api_key": API_KEY}
+        )
+        watch_providers = []
+        if providers:
+            results = providers.get("results", {})
+            for country in ["IN", "US"]:
+                region = results.get(country, {})
+                if region:
+                    flatrate = region.get("flatrate", [])
+                    watch_providers = [p for p in flatrate]
+                    break
+
+        return render_template(
+            'movie_detail.html',
+            movie=movie_data,
+            is_watched=is_watched,
+            watch_providers=watch_providers,
+            rating=movie_data.get("vote_average", 0),
+            vote_count=movie_data.get("vote_count", 0),
+            recommendations=(movie_data.get("recommendations") or {}).get("results", [])[:10],
+            similar=(movie_data.get("similar") or {}).get("results", [])[:10],
+        )
+    except Exception as e:
+        logger.error(f"MOVIE DETAIL ERROR ({movie_id}): {e}")
+        logger.error(traceback.format_exc())
+        flash("Couldn't load movie details.", "error")
+        return redirect('/mymovies')
+
+
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/remove/<int:show_id>', methods=['POST'])
 @login_required
@@ -785,6 +867,40 @@ def api_show_watched(show_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  API: SEASON TOTALS (accurate per-season episode counts)
+#  Used by show_detail.html to render green checkmarks correctly.
+#  ⚠️  Uses SEASON endpoint (accurate) not show endpoint (stale).
+# ═══════════════════════════════════════════════════════════════════
+@app.route('/api/show/<int:show_id>/season-totals')
+@login_required
+def api_season_totals(show_id):
+    """Return accurate per-season episode counts from SEASON endpoints.
+    This avoids the show endpoint's stale episode_count, which can be
+    wrong for ongoing shows (e.g. One Piece). The show_detail.html
+    inline tracker uses this to render green checkmarks correctly.
+
+    Returns: { "season_number": episode_count, ... }
+    """
+    show_data = tmdb_get(
+        f"https://api.themoviedb.org/3/tv/{show_id}",
+        {"api_key": API_KEY}
+    )
+    if not show_data:
+        return jsonify({"error": "Could not fetch show data"}), 404
+
+    totals = {}
+    for season in show_data.get("seasons", []):
+        sn = season["season_number"]
+        if sn <= 0:
+            continue
+        count = get_season_episode_count(show_id, sn)
+        if count > 0:
+            totals[str(sn)] = count
+
+    return jsonify(totals)
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  API: SEASON EPISODES (proxied from TMDB — no API key exposed!)
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/api/show/<int:show_id>/season/<int:season_number>')
@@ -926,16 +1042,32 @@ def _update_show_timestamp(show_id, user_id):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  MARK WATCHED (episode toggle)
+#  MARK WATCHED (episode toggle) — with auto-catch-up
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/watch/<int:show_id>/<int:season_number>/<int:episode_number>', methods=['POST'])
 @login_required
 def mark_watched(show_id, season_number, episode_number):
+    """
+    Toggle a single episode watched/unwatched.
+
+    🔄 AUTO-CATCH-UP: When the LAST episode of a season is marked as watched,
+    this endpoint automatically marks:
+      - All EARLIER episodes in the SAME season (1..N-1) as watched
+      - All episodes in ALL PRIOR seasons as watched
+
+    This ensures that "if I've watched the finale, I must have watched
+    everything before it" — without requiring the frontend to chain
+    multiple API calls. Both the season_detail page and the show_detail
+    inline tracker benefit from this server-side logic.
+    """
     token = request.form.get('_csrf_token')
     if not validate_csrf_token(token):
         abort(403)
 
     user_id = session['user_id']
+    auto_caught_up = False
+    auto_marked_count = 0
+
     try:
         conn = get_conn()
         try:
@@ -949,12 +1081,46 @@ def mark_watched(show_id, season_number, episode_number):
             if existing:
                 exe(cursor, 'DELETE FROM watched_episodes WHERE id=?', (existing[0],))
                 status = "unwatched"
+                total_in_season = get_season_episode_count(show_id, season_number)
             else:
                 exe(cursor, '''
                     INSERT INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
                     VALUES (?, ?, ?, ?)
                 ''', (show_id, season_number, episode_number, user_id))
                 status = "watched"
+
+                # ── Auto-catch-up: if this is the last episode of the season ──
+                total_in_season = get_season_episode_count(show_id, season_number)
+                if episode_number == total_in_season and total_in_season > 0 and season_number > 0:
+                    # 1. Mark all earlier episodes in THIS season (1..episode_number-1)
+                    earlier = [(show_id, season_number, ep, user_id) for ep in range(1, episode_number)]
+                    if earlier:
+                        exemany(cursor, '''
+                            INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                            VALUES (?, ?, ?, ?)
+                        ''', earlier)
+                        auto_marked_count += len(earlier)
+
+                    # 2. Mark all episodes in ALL prior seasons
+                    show_data = tmdb_get(
+                        f"https://api.themoviedb.org/3/tv/{show_id}",
+                        {"api_key": API_KEY}
+                    )
+                    if show_data:
+                        for season in show_data.get("seasons", []):
+                            sn = season["season_number"]
+                            if sn > 0 and sn < season_number:
+                                season_eps = get_season_episode_data(show_id, sn)
+                                prior_episodes = [(show_id, sn, ep["episode_number"], user_id) for ep in season_eps]
+                                if prior_episodes:
+                                    exemany(cursor, '''
+                                        INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                                        VALUES (?, ?, ?, ?)
+                                    ''', prior_episodes)
+                                    auto_marked_count += len(prior_episodes)
+
+                    if auto_marked_count > 0:
+                        auto_caught_up = True
 
             conn.commit()
 
@@ -971,18 +1137,19 @@ def mark_watched(show_id, season_number, episode_number):
         if total_episodes == 0:
             total_episodes, _ = get_show_episode_count(show_id)
 
-        # 🆕 Update last_watched_at so show jumps to top of My Shows
+        # Update last_watched_at so show jumps to top of My Shows
         _update_show_timestamp(show_id, user_id)
 
         finished = (watched_count == total_episodes and total_episodes > 0)
 
-        total_in_season = get_season_episode_count(show_id, season_number)
         is_last_episode = (episode_number == total_in_season and total_in_season > 0)
 
         return jsonify({
             "status": status,
             "finished": finished,
             "is_last_episode": is_last_episode,
+            "auto_caught_up": auto_caught_up,
+            "auto_marked_count": auto_marked_count,
             "season_number": season_number,
             "watched_count": watched_count,
             "total_episodes": total_episodes,
@@ -1155,6 +1322,8 @@ def watch_movie(movie_id):
             conn.commit()
         finally:
             conn.close()
+        # Update timestamp so movie jumps to top of My Movies
+        _update_show_timestamp(movie_id, user_id)
         return jsonify({"status": status})
     except Exception as e:
         logger.error(f"WATCH MOVIE ERROR ({movie_id}): {e}")

@@ -87,7 +87,7 @@
 </div>
 <div class="timeline">
     {% for item in timeline[:30] %}
-    <a href="/show/{{ item.tmdb_id }}" class="timeline-item {{ item.type }}">
+    <a href="/{{ 'movie' if item.type == 'movie' else 'show' }}/{{ item.tmdb_id }}" class="timeline-item {{ item.type }}">
         {% if item.poster_path %}
         <img class="tl-thumb" src="https://image.tmdb.org/t/p/w92{{ item.poster_path }}" alt="{{ item.name }}" loading="lazy">
         {% else %}
@@ -115,7 +115,7 @@
 <ul class="card-grid">
     {% for movie in watched_movies %}
     <li class="card">
-        <a href="/show/{{ movie[0] }}">
+        <a href="/movie/{{ movie[0] }}">
             {% if movie[2] %}
             <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
             {% else %}
@@ -126,7 +126,7 @@
             <div class="card-title">{{ movie[1] }}</div>
             <div class="card-meta">
                 <span class="card-rating">★ {{ "%.1f"|format(movie[4]|float) if movie[4] else "N/A" }}</span>
-                <span class="card-year">{{ movie[3][:10] if movie[3] else "" }}</span>
+                <span class="card-year">Watched {{ movie[3][:10] if movie[3] else "" }}</span>
             </div>
         </div>
     </li>
