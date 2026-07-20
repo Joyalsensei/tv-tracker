@@ -46,4 +46,5 @@ instance/
 # ── Project specifics ──
 tracker.db
 tracker.db.backup.*
+tracker.db.*
 .secret_key
