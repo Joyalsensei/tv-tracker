@@ -16,7 +16,7 @@ from markupsafe import escape
 logging.basicConfig(level=logging.ERROR, stream=sys.stdout, force=True)
 logger = logging.getLogger(__name__)
 
-from database import init_db, get_conn, exe, exemany, lastrowid
+from database import init_db, get_conn, exe, exemany, lastrowid, get_db_path
 
 # Load .env from the same directory as this file (works from any working directory)
 load_dotenv(Path(__file__).parent / '.env')
@@ -42,7 +42,7 @@ else:
         print(f"  Generated persistent key saved to {_SECRET_KEY_FILE}")
 
 API_KEY = os.environ.get("TMDB_API_KEY")
-DATABASE_PATH = os.environ.get("DATABASE_PATH", str(Path(__file__).parent / "tracker.db"))
+DATABASE_PATH = get_db_path()
 
 # Security: ensure required secrets are configured
 if not API_KEY:

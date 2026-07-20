@@ -1,12 +1,18 @@
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = str(Path(__file__).parent / "tracker.db")
+_DEFAULT_DB_PATH = str(Path(__file__).parent / "tracker.db")
+
+
+def get_db_path():
+    """Return the database path from env var, or the project default."""
+    return os.environ.get("DATABASE_PATH", _DEFAULT_DB_PATH)
 
 
 def get_conn():
     """Return a SQLite database connection."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(get_db_path())
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -14,7 +20,7 @@ def get_conn():
 
 def init_db(db_path=None):
     if db_path is None:
-        db_path = DB_PATH
+        db_path = get_db_path()
 
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
@@ -63,14 +69,14 @@ def init_db(db_path=None):
         )
     ''')
 
-    # 🆕 Migration: add user_status column for Show Status Management
+    # Migration: add user_status column for Show Status Management
     try:
         cursor.execute('ALTER TABLE shows ADD COLUMN user_status TEXT DEFAULT NULL')
         print("  Added column: shows.user_status")
     except Exception:
         pass  # Column already exists
 
-    # 🆕 Migration: add last_watched_at column for sorting by recent activity
+    # Migration: add last_watched_at column for sorting by recent activity
     try:
         cursor.execute('ALTER TABLE shows ADD COLUMN last_watched_at TEXT DEFAULT NULL')
         print("  Added column: shows.last_watched_at")
@@ -79,7 +85,7 @@ def init_db(db_path=None):
 
     conn.commit()
     conn.close()
-    print("Database initialized")
+    print(f"Database initialized at {db_path}")
 
 
 # ── Simple SQL wrappers (keeps app.py clean) ──────────────────────
