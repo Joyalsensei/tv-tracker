@@ -77,7 +77,7 @@ def init_db(db_path=None):
         if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
             pass  # Column already exists
         else:
-            print(f"  ⚠️  Migration warning (shows.user_status): {e}")
+            print(f"  [WARN] Migration warning (shows.user_status): {e}")
 
     # Migration: add last_watched_at column for sorting by recent activity
     try:
@@ -87,7 +87,7 @@ def init_db(db_path=None):
         if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
             pass
         else:
-            print(f"  ⚠️  Migration warning (shows.last_watched_at): {e}")
+            print(f"  [WARN] Migration warning (shows.last_watched_at): {e}")
 
     # Migration: add total_episodes column for episode progress tracking
     try:
@@ -97,7 +97,7 @@ def init_db(db_path=None):
         if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
             pass
         else:
-            print(f"  ⚠️  Migration warning (shows.total_episodes): {e}")
+            print(f"  [WARN] Migration warning (shows.total_episodes): {e}")
 
     # Migration: add google_id column for Google OAuth login
     try:
@@ -107,7 +107,7 @@ def init_db(db_path=None):
         if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
             pass
         else:
-            print(f"  ⚠️  Migration warning (users.google_id): {e}")
+            print(f"  [WARN] Migration warning (users.google_id): {e}")
 
     # Migration: add email column for Google OAuth users
     try:
@@ -117,7 +117,29 @@ def init_db(db_path=None):
         if 'duplicate column' in str(e).lower() or 'already exists' in str(e).lower():
             pass
         else:
-            print(f"  ⚠️  Migration warning (users.email): {e}")
+            print(f"  [WARN] Migration warning (users.email): {e}")
+
+    # ── Indexes for performance ──
+    # watched_episodes: filtering by show+user is the most common query
+    try:
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_watched_episodes_show_user
+            ON watched_episodes(show_tmdb_id, user_id)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_watched_episodes_user_season
+            ON watched_episodes(user_id, season_number)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_shows_user_status
+            ON shows(user_id, status)
+        ''')
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_watched_movies_user
+            ON watched_movies(user_id, movie_tmdb_id)
+        ''')
+    except Exception as e:
+        print(f"  [WARN] Index warning: {e}")
 
     conn.commit()
     conn.close()

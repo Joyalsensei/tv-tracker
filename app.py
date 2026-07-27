@@ -40,7 +40,7 @@ else:
     else:
         app.secret_key = secrets.token_hex(32)
         _SECRET_KEY_FILE.write_text(app.secret_key)
-        print(f"  Generated persistent key saved to {_SECRET_KEY_FILE}")
+        print(f"  [INFO] Generated persistent key saved to {_SECRET_KEY_FILE}")
 
 API_KEY = os.environ.get("TMDB_API_KEY")
 DATABASE_PATH = get_db_path()
@@ -62,9 +62,9 @@ if google_oauth_available:
         server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
         client_kwargs={'scope': 'openid profile email'}
     )
-    print("  ✅ Google OAuth configured!")
+    print("  [OK] Google OAuth configured!")
 else:
-    print("  ⚠️  Google OAuth not configured (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)")
+    print("  [WARN] Google OAuth not configured (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)")
 
 # Security: ensure required secrets are configured
 if not API_KEY:
@@ -144,11 +144,16 @@ def set_security_headers(response):
 
 
 def generate_csrf_token():
-    """Generate or retrieve a CSRF token, refreshing only once per minute."""
+    """Generate or retrieve a CSRF token, refreshing only every 30 minutes.
+    
+    The 60-second refresh was too aggressive and caused form submissions
+    (like the Remove button) to fail with 403 errors when a user spent
+    more than a minute on a page before clicking.
+    """
     if "_csrf_token" not in session or "_csrf_token_ts" not in session:
         session["_csrf_token"] = secrets.token_urlsafe(32)
         session["_csrf_token_ts"] = time.time()
-    elif time.time() - session["_csrf_token_ts"] > 60:
+    elif time.time() - session["_csrf_token_ts"] > 1800:  # 30 minutes
         session["_csrf_token"] = secrets.token_urlsafe(32)
         session["_csrf_token_ts"] = time.time()
     return session["_csrf_token"]
@@ -168,9 +173,9 @@ print(f"  Database: SQLite ({DATABASE_PATH})")
 print("  Connecting...")
 try:
     init_db(DATABASE_PATH)
-    print("  ✅ Database connected and tables ready!")
+    print("  [OK] Database connected and tables ready!")
 except Exception as e:
-    print(f"  ❌ Database init failed: {e}", file=sys.stderr)
+    print(f"  [ERROR] Database init failed: {e}", file=sys.stderr)
 print("=" * 50)
 
 
@@ -715,21 +720,33 @@ def movie_detail(movie_id):
 @login_required
 def remove_show(show_id):
     if not validate_csrf_token(request.form.get('_csrf_token')):
-        abort(403)
+        flash("Session expired. Please try again.", "error")
+        return redirect(request.referrer or '/myshows')
     try:
         conn = get_conn()
         try:
             cursor = conn.cursor()
             exe(cursor, 'DELETE FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
             exe(cursor, 'DELETE FROM watched_episodes WHERE show_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+            # Only try to delete from watched_movies if this item is actually a movie
             exe(cursor, 'DELETE FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
             conn.commit()
+        except Exception as db_err:
+            logger.error(f"REMOVE DB ERROR ({show_id}): {db_err}")
+            logger.error(traceback.format_exc())
+            flash("Could not remove item. Database error.", "error")
+            return redirect(request.referrer or '/myshows')
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except:
+                pass
     except Exception as e:
-        logger.error(f"REMOVE ERROR ({show_id}): {e}")
+        logger.error(f"REMOVE CONNECTION ERROR ({show_id}): {e}")
         logger.error(traceback.format_exc())
-        flash("Could not remove item. Try again.", "error")
+        flash("Could not connect to database. Try again.", "error")
+        return redirect(request.referrer or '/myshows')
+    flash("Item removed successfully.", "success")
     return redirect(request.referrer or '/myshows')
 
 
@@ -1714,16 +1731,32 @@ def stats_dashboard():
                            WHERE user_id=? AND season_number != 0''', (user_id,))
             shows_with_activity = cursor.fetchone()[0]
 
-            exe(cursor, 'SELECT COUNT(*) FROM shows WHERE user_id=? AND status != \'Movie\'', (user_id,))
-            total_tv_shows = cursor.fetchone()[0]
+            # 🐛 FIX: Removed redundant COUNT query - total_tv_shows already set from the loop above
 
             # ── Completed shows (for completion rate) ──
-            exe(cursor, '''SELECT COUNT(*) FROM shows s
+            # 🐛 FIX: We need to compare against fresh TMDB totals, not cached total_episodes
+            # which may be stale. We compute completion rate from watched/total per show.
+            exe(cursor, '''SELECT s.tmdb_id
+                           FROM shows s
                            WHERE s.user_id=? AND s.status != 'Movie'
-                           AND (SELECT COUNT(*) FROM watched_episodes we
-                                WHERE we.show_tmdb_id=s.tmdb_id AND we.user_id=s.user_id AND we.season_number != 0) >= s.total_episodes
-                           AND s.total_episodes > 0''', (user_id,))
-            completed_shows = cursor.fetchone()[0]
+                        ''', (user_id,))
+            all_shows_for_completion = cursor.fetchall()
+            completed_count = 0
+            total_with_data = 0
+            for (tmdb_id,) in all_shows_for_completion:
+                exe(cursor, '''SELECT COUNT(*) FROM watched_episodes we
+                               WHERE we.show_tmdb_id=? AND we.user_id=? AND we.season_number != 0''',
+                    (tmdb_id, user_id))
+                wc = cursor.fetchone()[0]
+                # Get fresh total from TMDB season endpoints
+                fresh_total, _ = get_show_episode_count(tmdb_id)
+                if fresh_total > 0:
+                    total_with_data += 1
+                    if wc >= fresh_total:
+                        completed_count += 1
+            completed_shows = completed_count
+            total_tv_shows = total_with_data  # 🐛 FIX: set from accurate TMDB data, not stale cache
+            # Note: total_tv_shows_for_rate was intentionally removed — total_tv_shows above is the accurate count.
 
             # ── Monthly activity (last 12 months) ──
             exe(cursor, '''
@@ -1798,4 +1831,6 @@ def stats_dashboard():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_ENV") != "production"
+    app.run(host="0.0.0.0", port=port, debug=debug)

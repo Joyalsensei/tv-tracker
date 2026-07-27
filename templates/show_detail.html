@@ -158,8 +158,8 @@
             {% if season.season_number != 0 %}
             <div class="season-row" data-season="{{ season.season_number }}" id="season-row-{{ season.season_number }}">
                 <h3>
-                    <span class="season-check not-watched" id="season-check-{{ season.season_number }}">✓</span>
-                    Season {{ season.season_number }} ({{ season.episode_count }} episodes)
+                    <span class="season-check not-watched" id="season-check-{{ season.season_number }}" title="Loading...">✓</span>
+                    Season {{ season.season_number }} (<span class="season-ep-count">{{ season.episode_count }}</span> episodes)
                 </h3>
                 <div style="display:flex;align-items:center;gap:10px;">
                     {% if is_in_shows %}
@@ -331,23 +331,58 @@ function refreshSeasonCheckmarks(showId) {
                 const seasonNum = parseInt(row.dataset.season);
                 const checkEl = document.getElementById('season-check-' + seasonNum);
                 if (!checkEl) return;
-                const total = seasonTotals[seasonNum] || 0;
+                // 🐛 FIX: seasonTotals keys are strings (from JSON), convert to compare
+                const total = seasonTotals[String(seasonNum)] || seasonTotals[seasonNum] || 0;
                 const watched = (watchedData.season_counts[seasonNum] || 0);
                 if (total > 0 && watched >= total) {
                     checkEl.className = 'season-check watched-all';
                     checkEl.title = 'All ' + total + ' episodes watched';
+                    checkEl.textContent = '✓';
                 } else {
                     checkEl.className = 'season-check not-watched';
                     checkEl.title = watched + '/' + total + ' watched';
+                    checkEl.textContent = '✓';
                 }
             });
-        }).catch(function() {});
+        }).catch(function() {
+            // Fallback: try using template-rendered season counts from show endpoint
+            // This is less accurate but better than nothing
+            document.querySelectorAll('[id^="season-row-"]').forEach(function(row) {
+                const seasonNum = parseInt(row.dataset.season);
+                const checkEl = document.getElementById('season-check-' + seasonNum);
+                if (!checkEl) return;
+                const epCountText = row.querySelector('.season-ep-count');
+                const total = epCountText ? parseInt(epCountText.textContent) : 0;
+                if (total > 0) {
+                    checkEl.title = '0/' + total + ' watched (unable to verify) ';
+                }
+            });
+        });
 }
 
 // Initialize season checkmarks on page load
 // We need to wait a tick for the DOM to be ready, then check all seasons
 document.addEventListener('DOMContentLoaded', function() {
     refreshSeasonCheckmarks(SHOW_ID);
+});
+
+// ── Add loading class to buttons when clicked (prevents double-clicks) ──
+document.addEventListener('click', function(e) {
+    var btn = e.target.closest('button');
+    if (btn && btn.form) {
+        // Buttons inside forms are handled by form submit event
+        return;
+    }
+    if (btn && !btn.disabled && !btn.classList.contains('loading')) {
+        // Only for async action buttons that don't navigate away
+        if (btn.onclick || btn.getAttribute('onclick')) {
+            // Don't disable permanently, just for 500ms to prevent double-click
+            btn.disabled = true;
+            setTimeout(function() {
+                btn.disabled = false;
+            }, 500);
+        }
+    }
 });
 </script>
 {% endblock %}

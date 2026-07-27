@@ -48,13 +48,14 @@
 <div class="page-header">
     <h1>🎬 My Movies</h1>
     <div class="subtitle">Your movie collection</div>
+    <p style="font-size:13px;color:var(--text-dim);margin-top:4px;">Click a movie to see details. Use the toggle button to mark as watched.</p>
 </div>
 
 {% if movies %}
 <ul class="card-grid">
 {% for movie in movies %}
     <li class="card">
-        <a href="/show/{{ movie[0] }}">
+        <a href="/movie/{{ movie[0] }}">
             {% if movie[2] %}
             <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
             {% else %}

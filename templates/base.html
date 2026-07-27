@@ -17,6 +17,7 @@
             --accent: #e50914;
             --accent-hover: #f40612;
             --accent-green: #2ecc71;
+            --accent-green-hover: #27ae60;
             --accent-yellow: #f5c518;
             --accent-blue: #3498db;
             --border: #2a2a2a;
@@ -25,8 +26,18 @@
             --radius-lg: 12px;
             --shadow: 0 4px 20px rgba(0,0,0,.4);
             --transition: .2s ease;
+            --transition-slow: .35s ease;
             --bottom-nav-height: 64px;
             --max-width: 1400px;
+            /* 8px spacing system */
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-5: 20px;
+            --space-6: 24px;
+            --space-8: 32px;
+            --space-10: 40px;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -35,14 +46,29 @@
             background: var(--bg);
             color: var(--text);
             font-family: 'Segoe UI', -apple-system, Arial, sans-serif;
-            padding-bottom: calc(var(--bottom-nav-height) + 16px + env(safe-area-inset-bottom, 0px));
+            padding-bottom: calc(var(--bottom-nav-height) + var(--space-4) + env(safe-area-inset-bottom, 0px));
             overflow-x: hidden;
             min-height: 100vh;
             -webkit-font-smoothing: antialiased;
         }
         a { color: #66d9ef; text-decoration: none; transition: color var(--transition); }
         a:hover { color: #fff; }
+        a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         img { max-width: 100%; }
+
+        /* ── Focus styles for accessibility ── */
+        :focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible,
+        a:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
 
         /* ── Bottom Navigation ── */
         .bottom-nav {
@@ -53,12 +79,12 @@
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border-top: 1px solid var(--border);
-            padding: 0 4px;
+            padding: 0 var(--space-1);
             padding-bottom: env(safe-area-inset-bottom, 0);
         }
         .bottom-nav a {
             display: flex; flex-direction: column; align-items: center; gap: 2px;
-            padding: 6px 12px; border-radius: var(--radius);
+            padding: var(--space-2) var(--space-3); border-radius: var(--radius);
             color: var(--text-secondary); font-size: 10px;
             transition: all var(--transition);
             min-width: 56px;
@@ -98,7 +124,7 @@
         /* ── Top bar (small header with logo + user) ── */
         .top-bar {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 12px 32px;
+            padding: var(--space-3) var(--space-8);
             background: var(--bg);
             border-bottom: 1px solid var(--border);
         }
@@ -107,10 +133,10 @@
             color: var(--accent); letter-spacing: -.5px;
         }
         .top-bar .logo span { color: var(--text); font-weight: 300; }
-        .top-bar-right { display: flex; align-items: center; gap: 12px; }
+        .top-bar-right { display: flex; align-items: center; gap: var(--space-3); }
         .top-bar-right .username {
             color: var(--text-secondary); font-size: 13px;
-            padding: 4px 10px; background: rgba(255,255,255,.05);
+            padding: var(--space-1) 10px; background: rgba(255,255,255,.05);
             border-radius: 20px; white-space: nowrap;
         }
         .top-bar-right .username .avatar {
@@ -126,12 +152,14 @@
             transition: all var(--transition);
         }
         .btn-logout:hover { border-color: var(--accent); color: var(--accent); background: rgba(229,9,20,.08); }
+        .btn-logout:disabled { opacity: .5; cursor: not-allowed; }
         .btn-signup {
             padding: 6px 16px; font-size: 12px; border-radius: 20px;
             border: none; background: var(--accent); color: #fff;
             cursor: pointer; transition: all var(--transition); font-weight: 600;
         }
         .btn-signup:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-signup:disabled { opacity: .5; cursor: not-allowed; }
         .btn-login {
             padding: 6px 16px; font-size: 12px; border-radius: 20px;
             border: 1px solid var(--border-light); background: transparent;
@@ -139,6 +167,7 @@
             transition: all var(--transition);
         }
         .btn-login:hover { border-color: var(--text); }
+        .btn-login:disabled { opacity: .5; cursor: not-allowed; }
 
         /* ── Toast Notifications ── */
         .toast-container {
@@ -428,19 +457,62 @@
         .rating-bar-fill { height: 100%; background: var(--accent-yellow); border-radius: 3px; transition: width .5s; }
 
         /* ── Responsive ── */
+        @media (max-width: 1024px) {
+            .card-grid { grid-template-columns: repeat(3, 1fr); }
+        }
         @media (max-width: 768px) {
-            .top-bar { padding: 10px 16px; }
+            .top-bar { padding: 10px var(--space-4); }
             .top-bar .logo { font-size: 18px; }
             .top-bar-right .username { display: none; }
-            .page-content { padding: 16px; }
+            .page-content { padding: var(--space-4); }
             .page-header h1 { font-size: 22px; }
+            .page-header { margin-bottom: var(--space-4); }
             .card-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
             .shelf-card-wrapper,
             .shelf-card { width: 100px; }
             .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-            .bottom-nav a { min-width: 48px; padding: 4px 8px; }
+            .bottom-nav a { min-width: 48px; padding: var(--space-1) var(--space-2); }
             .bottom-nav a .nav-icon { font-size: 20px; }
             .bottom-nav a .nav-label { font-size: 9px; }
+        }
+        @media (max-width: 480px) {
+            .card-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .shelf-card-wrapper,
+            .shelf-card { width: 80px; }
+            .hero h1 { font-size: 26px; }
+        }
+        @media (min-width: 1280px) {
+            .card-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        }
+        @media (min-width: 1600px) {
+            .card-grid { grid-template-columns: repeat(5, 1fr); gap: 24px; }
+        }
+
+        /* ── Disabled button state (for loading/processing) ── */
+        .btn:disabled,
+        button:disabled,
+        .remove-link:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+            transform: none !important;
+            filter: none !important;
+        }
+        .btn.loading {
+            position: relative;
+            color: transparent !important;
+            pointer-events: none;
+        }
+        .btn.loading::after {
+            content: '';
+            position: absolute; left: 50%; top: 50%;
+            width: 16px; height: 16px; margin: -8px 0 0 -8px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin .6s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         /* ── Flash fallback (if JS not working) ── */
@@ -454,6 +526,16 @@
     {% block head_extra %}{% endblock %}
 </head>
 <body>
+
+<!-- ─── Skip to main content link (WCAG 2.4.1) ─── -->
+<a href="#main-content" class="skip-link" style="position:absolute;top:-100px;left:8px;padding:8px 16px;background:var(--accent);color:#fff;border-radius:0 0 var(--radius) var(--radius);z-index:9999;font-size:14px;font-weight:600;transition:top .2s ease;">
+    Skip to main content
+</a>
+<style>
+    .skip-link:focus {
+        top: 0;
+    }
+</style>
 
 <!-- ─── Toast Container ─── -->
 <div class="toast-container" id="toastContainer"></div>
@@ -478,35 +560,35 @@
 </div>
 
 <!-- ─── Bottom Navigation ─── -->
-<nav class="bottom-nav">
-    <a href="/" class="{% if request.path == '/' %}active{% endif %}">
-        <span class="nav-icon">🏠</span>
+<nav class="bottom-nav" aria-label="Main navigation">
+    <a href="/" class="{% if request.path == '/' %}active{% endif %}" aria-label="Explore"{% if request.path == '/' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">🏠</span>
         <span class="nav-label">Explore</span>
     </a>
     {% if session.user_id %}
-    <a href="/myshows" class="{% if request.path == '/myshows' %}active{% endif %}">
-        <span class="nav-icon">📺</span>
+    <a href="/myshows" class="{% if request.path == '/myshows' %}active{% endif %}" aria-label="My Shows"{% if request.path == '/myshows' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">📺</span>
         <span class="nav-label">Shows</span>
     </a>
-    <a href="/upcoming" class="{% if request.path == '/upcoming' %}active{% endif %}">
-        <span class="nav-icon">📅</span>
+    <a href="/upcoming" class="{% if request.path == '/upcoming' %}active{% endif %}" aria-label="Upcoming Episodes"{% if request.path == '/upcoming' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">📅</span>
         <span class="nav-label">Upcoming</span>
     </a>
-    <a href="/mymovies" class="{% if request.path == '/mymovies' %}active{% endif %}">
-        <span class="nav-icon">🎬</span>
+    <a href="/mymovies" class="{% if request.path == '/mymovies' %}active{% endif %}" aria-label="My Movies"{% if request.path == '/mymovies' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">🎬</span>
         <span class="nav-label">Movies</span>
     </a>
-    <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}">
-        <span class="nav-icon">📊</span>
+    <a href="/stats" class="{% if request.path == '/stats' %}active{% endif %}" aria-label="Profile and Statistics"{% if request.path == '/stats' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">📊</span>
         <span class="nav-label">Profile</span>
     </a>
     {% else %}
-    <a href="/login" class="{% if request.path == '/login' %}active{% endif %}">
-        <span class="nav-icon">🔑</span>
+    <a href="/login" class="{% if request.path == '/login' %}active{% endif %}" aria-label="Login"{% if request.path == '/login' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">🔑</span>
         <span class="nav-label">Login</span>
     </a>
-    <a href="/signup" class="{% if request.path == '/signup' %}active{% endif %}">
-        <span class="nav-icon">✨</span>
+    <a href="/signup" class="{% if request.path == '/signup' %}active{% endif %}" aria-label="Sign Up"{% if request.path == '/signup' %} aria-current="page"{% endif %}>
+        <span class="nav-icon" aria-hidden="true">✨</span>
         <span class="nav-label">Sign Up</span>
     </a>
     {% endif %}
@@ -520,7 +602,7 @@
 {% endwith %}
 
 <!-- ─── Main Content ─── -->
-<main class="page-content">
+<main class="page-content" id="main-content">
     {% block content %}{% endblock %}
 </main>
 
@@ -559,6 +641,19 @@ if (flashData) {
 function confirmAction(msg) {
     return confirm(msg);
 }
+
+// ── Disable button on form submit to prevent double-clicks ──
+// Only disable if the form passes HTML5 validation (prevents permanently disabled buttons)
+document.addEventListener('submit', function(e) {
+    const form = e.target;
+    if (!form.checkValidity || form.checkValidity()) {
+        const btn = form.querySelector('button[type="submit"]');
+        if (btn && !btn.disabled) {
+            btn.disabled = true;
+            btn.classList.add('loading');
+        }
+    }
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>

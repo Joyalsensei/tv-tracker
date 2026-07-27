@@ -43,6 +43,11 @@ Thumbs.db
 # ── Flask ──
 instance/
 
+# ── OS artifacts ──
+nul
+NUL
+NUL.*
+
 # ── Project specifics ──
 tracker.db
 tracker.db.backup.*
