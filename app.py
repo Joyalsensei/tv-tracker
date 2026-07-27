@@ -726,15 +726,18 @@ def remove_show(show_id):
         conn = get_conn()
         try:
             cursor = conn.cursor()
-            exe(cursor, 'DELETE FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+            # 🐛 FIX: Delete child rows FIRST to avoid FOREIGN KEY constraint failures
+            # watched_episodes references shows via show_tmdb_id
             exe(cursor, 'DELETE FROM watched_episodes WHERE show_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
-            # Only try to delete from watched_movies if this item is actually a movie
+            # watched_movies is a separate table but same pattern
             exe(cursor, 'DELETE FROM watched_movies WHERE movie_tmdb_id=? AND user_id=?', (show_id, session['user_id']))
+            # Delete parent row LAST
+            exe(cursor, 'DELETE FROM shows WHERE tmdb_id=? AND user_id=?', (show_id, session['user_id']))
             conn.commit()
         except Exception as db_err:
             logger.error(f"REMOVE DB ERROR ({show_id}): {db_err}")
             logger.error(traceback.format_exc())
-            flash(f"Could not remove item. Error: {db_err}", "error")
+            flash(f"Could not remove item. Please try again.", "error")
             return redirect(request.referrer or '/myshows')
         finally:
             try:
