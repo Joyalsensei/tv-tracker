@@ -734,7 +734,7 @@ def remove_show(show_id):
         except Exception as db_err:
             logger.error(f"REMOVE DB ERROR ({show_id}): {db_err}")
             logger.error(traceback.format_exc())
-            flash("Could not remove item. Database error.", "error")
+            flash(f"Could not remove item. Error: {db_err}", "error")
             return redirect(request.referrer or '/myshows')
         finally:
             try:
