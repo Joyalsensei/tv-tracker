@@ -80,7 +80,7 @@
         <div class="shelf-card-wrapper" style="position:relative;flex:0 0 auto;width:140px;scroll-snap-align:start;">
             <a href="/{{ 'movie' if is_movie else 'show' }}/{{ item.id }}" class="shelf-card">
                 {% if item.poster_path %}
-                <img src="https://image.tmdb.org/t/p/w200{{ item.poster_path }}"
+                <img src="https://image.tmdb.org/t/p/w342{{ item.poster_path }}"
                      alt="{{ item.name or item.title }}" loading="lazy">
                 {% else %}
                 <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">

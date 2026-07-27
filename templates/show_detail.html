@@ -85,7 +85,7 @@
 
 <div class="detail-header">
     {% if show.poster_path %}
-    <img class="poster" src="https://image.tmdb.org/t/p/w300{{ show.poster_path }}" alt="{{ show.name }}">
+    <img class="poster" src="https://image.tmdb.org/t/p/w500{{ show.poster_path }}" alt="{{ show.name }}">
     {% else %}
     <div class="poster" style="background:var(--bg-elevated);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:14px;">No Poster</div>
     {% endif %}
@@ -188,7 +188,7 @@
         {% for rec in recommendations %}
         <a href="/show/{{ rec.id }}" class="shelf-card">
             {% if rec.poster_path %}
-            <img src="https://image.tmdb.org/t/p/w200{{ rec.poster_path }}" alt="{{ rec.name or rec.title }}" loading="lazy">
+            <img src="https://image.tmdb.org/t/p/w342{{ rec.poster_path }}" alt="{{ rec.name or rec.title }}" loading="lazy">
             {% else %}
             <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);"></div>
             {% endif %}
@@ -209,7 +209,7 @@
         {% for sim in similar %}
         <a href="/show/{{ sim.id }}" class="shelf-card">
             {% if sim.poster_path %}
-            <img src="https://image.tmdb.org/t/p/w200{{ sim.poster_path }}" alt="{{ sim.name or sim.title }}" loading="lazy">
+            <img src="https://image.tmdb.org/t/p/w342{{ sim.poster_path }}" alt="{{ sim.name or sim.title }}" loading="lazy">
             {% else %}
             <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);"></div>
             {% endif %}

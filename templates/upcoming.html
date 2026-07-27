@@ -72,7 +72,7 @@
     {% for ep in upcoming %}
     <a href="/show/{{ ep.show_id }}" class="ep-card">
         {% if ep.still_path %}
-        <img class="ep-still" src="https://image.tmdb.org/t/p/w300{{ ep.still_path }}" alt="{{ ep.show_name }}" loading="lazy">
+        <img class="ep-still" src="https://image.tmdb.org/t/p/w500{{ ep.still_path }}" alt="{{ ep.show_name }}" loading="lazy">
         {% else %}
         <div class="ep-still-placeholder">No Image</div>
         {% endif %}
@@ -98,7 +98,7 @@
     {% for ep in newly_aired %}
     <a href="/show/{{ ep.show_id }}" class="ep-card" style="opacity:.85;">
         {% if ep.still_path %}
-        <img class="ep-still" src="https://image.tmdb.org/t/p/w300{{ ep.still_path }}" alt="{{ ep.show_name }}" loading="lazy">
+        <img class="ep-still" src="https://image.tmdb.org/t/p/w500{{ ep.still_path }}" alt="{{ ep.show_name }}" loading="lazy">
         {% else %}
         <div class="ep-still-placeholder">No Image</div>
         {% endif %}

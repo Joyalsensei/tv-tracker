@@ -37,7 +37,7 @@
     <li class="card">
         <a href="{{ '/movie/' if search_type == 'movie' else '/show/' }}{{ show.id }}">
             {% if show.poster_path %}
-            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ show.poster_path }}" alt="{{ show.name or show.title }}" loading="lazy">
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w342{{ show.poster_path }}" alt="{{ show.name or show.title }}" loading="lazy">
             {% else %}
             <div class="card-poster-placeholder">No Poster</div>
             {% endif %}

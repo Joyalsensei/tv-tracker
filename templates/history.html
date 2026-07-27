@@ -89,7 +89,7 @@
     {% for item in timeline[:30] %}
     <a href="/{{ 'movie' if item.type == 'movie' else 'show' }}/{{ item.tmdb_id }}" class="timeline-item {{ item.type }}">
         {% if item.poster_path %}
-        <img class="tl-thumb" src="https://image.tmdb.org/t/p/w92{{ item.poster_path }}" alt="{{ item.name }}" loading="lazy">
+        <img class="tl-thumb" src="https://image.tmdb.org/t/p/w185{{ item.poster_path }}" alt="{{ item.name }}" loading="lazy">
         {% else %}
         <div class="tl-thumb-placeholder">No Poster</div>
         {% endif %}
@@ -117,7 +117,7 @@
     <li class="card">
         <a href="/movie/{{ movie[0] }}">
             {% if movie[2] %}
-            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w342{{ movie[2] }}" alt="{{ movie[1] }}" loading="lazy">
             {% else %}
             <div class="card-poster-placeholder">No Poster</div>
             {% endif %}
@@ -146,7 +146,7 @@
     <li class="card">
         <a href="/show/{{ show[0] }}">
             {% if show[2] %}
-            <img class="card-poster" src="https://image.tmdb.org/t/p/w200{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
+            <img class="card-poster" src="https://image.tmdb.org/t/p/w342{{ show[2] }}" alt="{{ show[1] }}" loading="lazy">
             {% else %}
             <div class="card-poster-placeholder">No Poster</div>
             {% endif %}
