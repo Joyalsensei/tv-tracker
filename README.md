@@ -143,7 +143,19 @@ Open **[http://localhost:5000](http://localhost:5000)** 🎬
    from app import app as application
    ```
 
-5. Add environment variables on the Web tab: `TMDB_API_KEY`, `FLASK_SECRET_KEY`, `FLASK_ENV=production`, and `ADMIN_USERNAME=<you>`.
+5. **Set environment variables.** PythonAnywhere's Web tab has **no**
+   environment-variable form — but this app auto-loads a `.env` file from
+   its own directory, so just create one in the project folder:
+
+   ```bash
+   cd ~/tv-tracker
+   cp .env.example .env      # or create it with a text editor
+   nano .env                 # add TMDB_API_KEY, FLASK_SECRET_KEY,
+                             # FLASK_ENV=production, ADMIN_USERNAME=<you>
+   ```
+
+   > The WSGI file already does `from app import app`, and `app.py` runs
+   > `load_dotenv()` at startup — so no WSGI edits are needed.
 6. Click the green **Reload** button. Done! 🎉
 
 > 💡 **Keep PythonAnywhere in sync with GitHub:** after each `git push`, open the PythonAnywhere Bash console and run `cd ~/tv-tracker && git pull`, then hit **Reload**.
