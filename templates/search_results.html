@@ -8,6 +8,8 @@
     }
     .search-bar h1 { font-size: 22px; }
     .result-count { color: var(--text-secondary); font-size: 14px; margin-bottom: 16px; }
+    .pagination { display: flex; gap: 10px; justify-content: center; margin-top: 28px; }
+    .pagination .btn { min-width: 120px; justify-content: center; }
 </style>
 {% endblock %}
 {% block content %}
@@ -22,8 +24,10 @@
 </div>
 
 <form action="/search" method="get" class="search-form" autocomplete="off" style="margin-bottom:24px;">
-    <input type="text" name="query" placeholder="Search again..." value="{{ query }}" autocomplete="off">
-    <select name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
+    <label for="search-query" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Search query</label>
+    <input type="text" id="search-query" name="query" placeholder="Search again..." value="{{ query }}" autocomplete="off">
+    <label for="search-type" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Search type</label>
+    <select id="search-type" name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
         <option value="tv" {% if search_type == 'tv' %}selected{% endif %}>TV Show</option>
         <option value="movie" {% if search_type == 'movie' %}selected{% endif %}>Movie</option>
     </select>
@@ -31,7 +35,7 @@
 </form>
 
 {% if results %}
-<p class="result-count">Found {{ results|length }} results for "{{ query }}"</p>
+<p class="result-count">Found {{ total_results }} results for "{{ query }}"</p>
 <ul class="card-grid">
 {% for show in results %}
     <li class="card">
@@ -49,12 +53,25 @@
                 <span class="card-year">{{ (show.first_air_date or show.release_date or "")[:4] }}</span>
             </div>
         </div>
-        <a href="{{ '/add_movie/' if search_type == 'movie' else '/add/' }}{{ show.id }}" class="card-overlay">
+        <button type="button" class="card-overlay" data-add-url="{{ '/add_movie/' if search_type == 'movie' else '/add/' }}{{ show.id }}" data-added-text="✓ Added" aria-label="Add {{ show.name or show.title }} to my list">
             <span>+ Add</span>
-        </a>
+        </button>
     </li>
 {% endfor %}
 </ul>
+
+{% if page > 1 or has_next %}
+<nav class="pagination" aria-label="Search results pages">
+    {% if page > 1 %}
+    <a href="/search?query={{ query|urlencode }}&type={{ search_type }}&page={{ page - 1 }}" class="btn btn-secondary">← Previous</a>
+    {% endif %}
+    <span style="align-self:center;font-size:13px;color:var(--text-dim);">Page {{ page }}</span>
+    {% if has_next %}
+    <a href="/search?query={{ query|urlencode }}&type={{ search_type }}&page={{ page + 1 }}" class="btn btn-secondary">Next →</a>
+    {% endif %}
+</nav>
+{% endif %}
+
 {% else %}
 <div class="empty-state">
     <div class="empty-icon">🔍</div>

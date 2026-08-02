@@ -1,7 +1,8 @@
 # ── Environment ──
 .env
-.env.example
 *.env
+# ...but keep the committed template
+!.env.example
 
 # ── Python ──
 __pycache__/

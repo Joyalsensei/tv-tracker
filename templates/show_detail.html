@@ -36,8 +36,8 @@
     .season-row h3 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
     .season-row .season-check {
         display: inline-flex; align-items: center; justify-content: center;
-        width: 22px; height: 22px; border-radius: 50%;
-        font-size: 12px; font-weight: 700;
+        width: 26px; height: 26px; border-radius: 50%;
+        font-size: 13px; font-weight: 700;
         transition: all .3s ease; flex-shrink: 0;
     }
     .season-row .season-check.watched-all {
@@ -48,16 +48,18 @@
     }
 
     .ep-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    /* WCAG 2.5.8 / user mandate: 44x44 touch target */
     .ep-dot {
-        width: 30px; height: 30px; border-radius: 50%;
+        width: 44px; height: 44px; border-radius: 50%;
         border: 2px solid #555; background: transparent;
-        color: #888; font-size: 11px; font-weight: 600;
+        color: #aab; font-size: 13px; font-weight: 600;
         cursor: pointer; transition: all .2s ease;
         display: flex; align-items: center; justify-content: center;
     }
-    .ep-dot:hover { border-color: #aaa; transform: scale(1.15); }
+    .ep-dot:hover { border-color: #aaa; transform: scale(1.08); }
     .ep-dot.watched { background: var(--accent-green); border-color: var(--accent-green); color: white; }
     .ep-dot.watched:hover { background: #e74c3c; border-color: #e74c3c; }
+    .ep-dot:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
     .season-ep-row { margin-bottom: 14px; }
     .season-ep-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
@@ -65,7 +67,7 @@
     .season-ep-header .ep-progress-fill { height: 100%; background: var(--accent-green); border-radius: 2px; transition: width .3s; }
     .season-ep-header .ep-progress-text { font-size: 11px; color: var(--text-dim); min-width: 60px; }
 
-    .btn-ep-track { background: var(--bg-elevated); color: var(--text); padding: 4px 10px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-light); cursor: pointer; transition: background var(--transition); }
+    .btn-ep-track { background: var(--bg-elevated); color: var(--text); padding: 10px 14px; font-size: 12px; border-radius: 4px; border: 1px solid var(--border-light); cursor: pointer; transition: background var(--transition); min-height: 44px; }
     .btn-ep-track:hover { background: var(--bg-hover); }
 
     @media (max-width: 768px) {
@@ -95,7 +97,7 @@
 
         <div class="rating-section">
             <span class="rating-number">{{ "%.1f"|format(rating|float) }}</span>
-            <span class="rating-stars">
+            <span class="rating-stars" aria-hidden="true">
                 {% set stars = (rating|float)|round(0, 'floor')|int %}
                 {% for i in range(10) %}
                     {% if i < stars %}★{% else %}☆{% endif %}
@@ -103,7 +105,7 @@
             </span>
             <span class="rating-votes" style="font-size:13px;color:var(--text-dim);">({{ vote_count }} votes)</span>
         </div>
-        <div class="rating-bar-bg">
+        <div class="rating-bar-bg" aria-hidden="true">
             <div class="rating-bar-fill" style="width: {{ (rating|float / 10) * 100 }}%;"></div>
         </div>
 
@@ -138,8 +140,8 @@
         <div class="actions">
             {% if is_in_shows %}
                 <span class="badge-added">✓ Already Added</span>
-                <button class="btn btn-secondary btn-sm" onclick="markAllSeasonsWatched({{ show.id }})">Mark All Watched</button>
-                <select id="status-select" onchange="setStatus({{ show.id }})" style="background:var(--bg-elevated);color:var(--text);padding:10px 14px;font-size:13px;border-radius:var(--radius);border:1px solid var(--border-light);cursor:pointer;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="markAllSeasonsWatched({{ show.id }})">Mark All Watched</button>
+                <select id="status-select" aria-label="Show status" onchange="setStatus({{ show.id }})" style="background:var(--bg-elevated);color:var(--text);padding:10px 14px;font-size:13px;border-radius:var(--radius);border:1px solid var(--border-light);cursor:pointer;">
                     <option value="" {% if not user_status %}selected{% endif %}>📋 Status</option>
                     <option value="plan_to_watch" {% if user_status == 'plan_to_watch' %}selected{% endif %}>📋 Plan to Watch</option>
                     <option value="watching" {% if user_status == 'watching' %}selected{% endif %}>📺 Watching</option>
@@ -148,7 +150,7 @@
                     <option value="completed" {% if user_status == 'completed' %}selected{% endif %}>✅ Completed</option>
                 </select>
             {% else %}
-                <a href="/add/{{ show.id }}"><button class="btn btn-primary btn-sm">+ Add to My Shows</button></a>
+                <button type="button" class="btn btn-primary btn-sm" data-add-url="/add/{{ show.id }}" data-added-text="✓ Added">+ Add to My Shows</button>
             {% endif %}
         </div>
 
@@ -158,14 +160,14 @@
             {% if season.season_number != 0 %}
             <div class="season-row" data-season="{{ season.season_number }}" id="season-row-{{ season.season_number }}">
                 <h3>
-                    <span class="season-check not-watched" id="season-check-{{ season.season_number }}" title="Loading...">✓</span>
+                    <span class="season-check not-watched" id="season-check-{{ season.season_number }}" aria-label="Season {{ season.season_number }} progress unknown" title="Loading...">✓</span>
                     Season {{ season.season_number }} (<span class="season-ep-count">{{ season.episode_count }}</span> episodes)
                 </h3>
                 <div style="display:flex;align-items:center;gap:10px;">
                     {% if is_in_shows %}
-                    <button class="btn-ep-track" onclick="toggleSeasonEpisodes({{ show.id }}, {{ season.season_number }}, this)" title="Quick-mark episodes">⚡ Quick Mark</button>
+                    <button type="button" class="btn-ep-track" onclick="toggleSeasonEpisodes({{ show.id }}, {{ season.season_number }}, this)" title="Quick-mark episodes" aria-expanded="false">⚡ Quick Mark</button>
                     {% endif %}
-                    <a href="/show/{{ show.id }}/season/{{ season.season_number }}" style="color:#66d9ef;font-size:13px;">View →</a>
+                    <a href="/show/{{ show.id }}/season/{{ season.season_number }}" style="color:#66d9ef;font-size:13px;min-height:44px;display:inline-flex;align-items:center;">View →</a>
                 </div>
             </div>
             {% endif %}
@@ -224,36 +226,37 @@
 {% endif %}
 
 <script>
-const CSRF_TOKEN = '{{ csrf_token() }}';
 const SHOW_ID = {{ show.id }};
 
 function setStatus(showId) {
     const select = document.getElementById('status-select');
-    const formData = new FormData();
-    formData.append('_csrf_token', CSRF_TOKEN);
-    formData.append('status', select.value);
-    fetch('/show/' + showId + '/set_status', {method: 'POST', body: formData})
+    TVTracker.csrfPost('/show/' + showId + '/set_status', {status: select.value})
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
-                showToast('Status updated!', 'success');
+                TVTracker.showToast('Status updated!', 'success');
+            } else {
+                TVTracker.showToast(data.message || 'Could not update status.', 'error');
             }
         }).catch(err => console.error('Error:', err));
 }
 
 function markAllSeasonsWatched(showId) {
-    if (confirm('Mark ALL episodes across ALL seasons as watched?')) {
-        const formData = new FormData();
-        formData.append('_csrf_token', CSRF_TOKEN);
-        fetch('/mark_all_seasons_watched/' + showId, {method: 'POST', body: formData})
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    showToast('✅ Marked ' + data.marked_count + ' episodes as watched!', 'success');
-                    location.reload();
+    if (!TVTracker.confirmAction('Mark ALL episodes across ALL seasons as watched?')) return;
+    TVTracker.csrfPost('/mark_all_seasons_watched/' + showId)
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                TVTracker.showToast('✅ Marked ' + data.marked_count + ' episodes as watched!', 'success');
+                // No page reload — update season checkmarks + finish banner in place (no flicker)
+                refreshSeasonCheckmarks(showId);
+                if (data.finished) {
+                    TVTracker.celebrate('🎉 Show finished!', "You've watched every episode. Great job!");
                 }
-            }).catch(err => console.error('Error:', err));
-    }
+            } else {
+                TVTracker.showToast(data.message || 'Could not mark all.', 'error');
+            }
+        }).catch(err => console.error('Error:', err));
 }
 
 let _activeSeasonEpBtn = null;
@@ -262,11 +265,12 @@ function toggleSeasonEpisodes(showId, seasonNumber, btn) {
     const grid = document.getElementById('inline-tracker-episodes');
     const progress = document.getElementById('inline-tracker-progress');
     if (container.style.display === 'block' && _activeSeasonEpBtn === btn) {
-        container.style.display = 'none'; _activeSeasonEpBtn = null; return;
+        container.style.display = 'none'; _activeSeasonEpBtn = null; btn.setAttribute('aria-expanded', 'false'); return;
     }
-    _activeSeasonEpBtn = btn; btn.classList.add('loading');
+    _activeSeasonEpBtn = btn; btn.classList.add('loading'); btn.setAttribute('aria-expanded', 'true');
     container.style.display = 'block';
-    grid.innerHTML = '<div style="color:var(--text-dim);font-size:13px;">Loading episodes...</div>';
+    // Skeleton while loading
+    grid.innerHTML = '<div class="skeleton" style="width:100%;height:44px;"></div><div class="skeleton" style="width:70%;height:44px;"></div>';
 
     fetch('/api/show/' + showId + '/season/' + seasonNumber)
         .then(res => res.json())
@@ -285,9 +289,11 @@ function toggleSeasonEpisodes(showId, seasonNumber, btn) {
             grid.innerHTML = '';
             episodes.forEach(ep => {
                 const dot = document.createElement('button');
+                dot.type = 'button';
                 dot.className = 'ep-dot' + (ep.watched ? ' watched' : '');
                 dot.textContent = ep.episode_number;
-                dot.title = 'Ep ' + ep.episode_number + ': ' + (ep.name || 'Untitled');
+                dot.setAttribute('aria-pressed', ep.watched ? 'true' : 'false');
+                dot.setAttribute('aria-label', 'Episode ' + ep.episode_number + ': ' + (ep.name || 'Untitled') + (ep.watched ? ', watched' : ', not watched'));
                 dot.onclick = function() { toggleEpisodeInline(showId, seasonNumber, ep.episode_number, dot); };
                 grid.appendChild(dot);
             });
@@ -298,25 +304,40 @@ function toggleSeasonEpisodes(showId, seasonNumber, btn) {
 }
 
 function toggleEpisodeInline(showId, seasonNumber, episodeNumber, dot) {
-    const formData = new FormData();
-    formData.append('_csrf_token', CSRF_TOKEN);
-    fetch('/watch/' + showId + '/' + seasonNumber + '/' + episodeNumber, {method: 'POST', body: formData})
+    // Optimistic update: flip immediately, revert on failure.
+    const wasWatched = dot.classList.contains('watched');
+    const applyState = (watched) => {
+        dot.classList.toggle('watched', watched);
+        dot.setAttribute('aria-pressed', watched ? 'true' : 'false');
+    };
+    applyState(!wasWatched);
+
+    TVTracker.csrfPost('/watch/' + showId + '/' + seasonNumber + '/' + episodeNumber)
         .then(res => res.json())
         .then(data => {
             if (data.status === 'watched') {
-                dot.classList.add('watched');
+                applyState(true);
                 if (data.auto_caught_up) {
-                    showToast('✅ Caught up! Auto-marked ' + data.auto_marked_count + ' prior episode(s).', 'success');
+                    TVTracker.showToast('✅ Caught up! Auto-marked ' + data.auto_marked_count + ' prior episode(s).', 'success');
                 }
+                if (data.finished) {
+                    TVTracker.celebrate('🎉 Show finished!', "You've watched every episode. Great job!");
+                }
+            } else if (data.status === 'unwatched') {
+                applyState(false);
             } else {
-                dot.classList.remove('watched');
+                applyState(wasWatched);
+                TVTracker.showToast(data.message || 'Could not update.', 'error');
             }
             if (_activeSeasonEpBtn) {
                 const season = parseInt(_activeSeasonEpBtn.textContent.match(/\d+/));
                 if (!isNaN(season)) toggleSeasonEpisodes(showId, season, _activeSeasonEpBtn);
             }
             refreshSeasonCheckmarks(showId);
-        }).catch(err => console.error('Error:', err));
+        }).catch(err => {
+            applyState(wasWatched);
+            console.error('Error:', err);
+        });
 }
 
 function refreshSeasonCheckmarks(showId) {
@@ -331,22 +352,21 @@ function refreshSeasonCheckmarks(showId) {
                 const seasonNum = parseInt(row.dataset.season);
                 const checkEl = document.getElementById('season-check-' + seasonNum);
                 if (!checkEl) return;
-                // 🐛 FIX: seasonTotals keys are strings (from JSON), convert to compare
                 const total = seasonTotals[String(seasonNum)] || seasonTotals[seasonNum] || 0;
                 const watched = (watchedData.season_counts[seasonNum] || 0);
                 if (total > 0 && watched >= total) {
                     checkEl.className = 'season-check watched-all';
                     checkEl.title = 'All ' + total + ' episodes watched';
+                    checkEl.setAttribute('aria-label', 'Season ' + seasonNum + ': all ' + total + ' episodes watched');
                     checkEl.textContent = '✓';
                 } else {
                     checkEl.className = 'season-check not-watched';
                     checkEl.title = watched + '/' + total + ' watched';
+                    checkEl.setAttribute('aria-label', 'Season ' + seasonNum + ': ' + watched + ' of ' + total + ' episodes watched');
                     checkEl.textContent = '✓';
                 }
             });
         }).catch(function() {
-            // Fallback: try using template-rendered season counts from show endpoint
-            // This is less accurate but better than nothing
             document.querySelectorAll('[id^="season-row-"]').forEach(function(row) {
                 const seasonNum = parseInt(row.dataset.season);
                 const checkEl = document.getElementById('season-check-' + seasonNum);
@@ -361,28 +381,8 @@ function refreshSeasonCheckmarks(showId) {
 }
 
 // Initialize season checkmarks on page load
-// We need to wait a tick for the DOM to be ready, then check all seasons
 document.addEventListener('DOMContentLoaded', function() {
     refreshSeasonCheckmarks(SHOW_ID);
-});
-
-// ── Add loading class to buttons when clicked (prevents double-clicks) ──
-document.addEventListener('click', function(e) {
-    var btn = e.target.closest('button');
-    if (btn && btn.form) {
-        // Buttons inside forms are handled by form submit event
-        return;
-    }
-    if (btn && !btn.disabled && !btn.classList.contains('loading')) {
-        // Only for async action buttons that don't navigate away
-        if (btn.onclick || btn.getAttribute('onclick')) {
-            // Don't disable permanently, just for 500ms to prevent double-click
-            btn.disabled = true;
-            setTimeout(function() {
-                btn.disabled = false;
-            }, 500);
-        }
-    }
 });
 </script>
 {% endblock %}

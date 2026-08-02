@@ -6,15 +6,20 @@ import secrets
 import sys
 import logging
 import traceback
+import threading
+import hashlib
+from datetime import date as _date, timedelta as _timedelta
 from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from pathlib import Path
 from markupsafe import escape
 from authlib.integrations.flask_client import OAuth
 
-# Log ALL errors to stdout so we can see them in Render logs
-logging.basicConfig(level=logging.ERROR, stream=sys.stdout, force=True)
+# Log to stdout so we can see them in Render logs.
+# INFO level: request logging (method, path, status, duration) for monitoring.
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
 logger = logging.getLogger(__name__)
 
 from database import init_db, get_conn, exe, exemany, lastrowid, get_db_path
@@ -44,6 +49,16 @@ else:
 
 API_KEY = os.environ.get("TMDB_API_KEY")
 DATABASE_PATH = get_db_path()
+
+# ── Admin configuration ───────────────────────────────────────
+# Comma-separated list of usernames allowed to open /admin (case-insensitive).
+# If ADMIN_USERNAME is unset, the first registered user stays admin (legacy
+# behavior) so existing deployments don't silently lose access.
+ADMIN_USERNAMES = [
+    u.strip().lower()
+    for u in os.environ.get("ADMIN_USERNAME", "").split(",")
+    if u.strip()
+]
 
 # ── Google OAuth Config ──────────────────────────────────
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
@@ -83,7 +98,17 @@ def handle_404(error):
 def handle_500(error):
     logger.error(f"500 ERROR: {error}")
     logger.error(traceback.format_exc())
-    return "Internal Server Error", 500
+    return render_template('500.html'), 500
+
+
+@app.errorhandler(403)
+def handle_403(error):
+    return render_template('403.html'), 403
+
+
+@app.errorhandler(400)
+def handle_400(error):
+    return render_template('400.html'), 400
 
 # Session cookie security
 app.config.update(
@@ -98,17 +123,56 @@ app.config.update(
 _tmdb_cache = {}
 CACHE_TTL = 600  # 10 minutes (reduced TMDB API calls)
 
+# ── TMDB circuit breaker ────────────────────────────────────────────
+# If TMDB is unreachable, pages would otherwise block for 3x10s timeouts
+# per call (My Shows took 32s+ in testing). After N consecutive failures
+# we fast-fail all TMDB calls for 60s so pages render instantly from
+# cached/DB data, then automatically retry when TMDB recovers.
+_tmdb_failures = 0
+_tmdb_degraded_until = 0.0
+_TMDB_DEGRADE_THRESHOLD = 3
+_TMDB_DEGRADE_SECONDS = 60
+_tmdb_lock = threading.Lock()  # counters are touched from parallel fetchers
+
+
+def _mark_tmdb_failed():
+    global _tmdb_failures, _tmdb_degraded_until
+    with _tmdb_lock:
+        _tmdb_failures += 1
+        if _tmdb_failures >= _TMDB_DEGRADE_THRESHOLD:
+            _tmdb_degraded_until = time.time() + _TMDB_DEGRADE_SECONDS
+            _tmdb_failures = 0
+            logger.warning("TMDB unreachable — degrading for %ds to keep pages fast", _TMDB_DEGRADE_SECONDS)
+
+
+def _reset_tmdb_degraded():
+    global _tmdb_failures, _tmdb_degraded_until
+    with _tmdb_lock:
+        _tmdb_failures = 0
+        _tmdb_degraded_until = 0.0
+
 
 def _cache_key(url, params):
     return f"{url}?{hash(frozenset(params.items()))}"
 
 
 def tmdb_get(url, params, ttl=CACHE_TTL):
-    """Fetch TMDB data with in-memory cache and retry/backoff for 429s."""
+    """Fetch TMDB data with in-memory cache, retry/backoff for 429s, and a
+    circuit breaker: if TMDB is unreachable we fast-fail for 60s instead of
+    blocking pages on repeated 10s timeouts.
+
+    🐛 The cache is checked FIRST so already-cached responses stay usable
+    while the circuit is open (pages keep working from cache during an outage).
+    """
     key = _cache_key(url, params)
     cached = _tmdb_cache.get(key)
     if cached and time.time() - cached["ts"] < ttl:
         return cached["data"]
+
+    if time.time() < _tmdb_degraded_until:
+        return None
+
+    ok = False
     for attempt in range(3):
         try:
             resp = requests.get(url, params=params, timeout=10)
@@ -119,19 +183,26 @@ def tmdb_get(url, params, ttl=CACHE_TTL):
             resp.raise_for_status()
             data = resp.json()
             _tmdb_cache[key] = {"data": data, "ts": time.time()}
+            _reset_tmdb_degraded()  # any success closes the circuit
+            ok = True
             return data
         except requests.exceptions.RequestException:
             if attempt == 2:
-                return None
+                break
             time.sleep(1)
+    if not ok:
+        _mark_tmdb_failed()
+    return None
 
 
 @app.after_request
 def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # HSTS only when served over HTTPS in production
+    if os.environ.get("FLASK_ENV") == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline'; "
@@ -139,6 +210,24 @@ def set_security_headers(response):
         "img-src 'self' https://image.tmdb.org; "
         "connect-src 'self' https://api.themoviedb.org; "
         "frame-ancestors 'self';"
+    )
+    return response
+
+
+@app.before_request
+def _record_request_start():
+    request._start_time = time.time()
+
+
+@app.after_request
+def _log_request(response):
+    """Request logging for monitoring: method, path, status, duration."""
+    if request.path.startswith('/static'):
+        return response
+    duration_ms = (time.time() - getattr(request, '_start_time', time.time())) * 1000
+    logger.info(
+        "%s %s -> %s (%.0fms)",
+        request.method, request.path, response.status_code, duration_ms
     )
     return response
 
@@ -164,6 +253,49 @@ def validate_csrf_token(token):
 
 
 app.jinja_env.globals["csrf_token"] = generate_csrf_token
+
+# ── Rate limiting (in-memory, per-IP sliding window) ────────────────
+# Small, dependency-free limiter for abuse-prone endpoints.
+# Note: in-memory means limits reset on restart — acceptable for this scale;
+# a Redis-backed limiter would be the production upgrade path.
+_rate_limit_hits = {}
+RATE_LIMITS = {
+    "search": (60, 40),   # 40 searches / minute
+    "login": (60, 10),    # 10 login attempts / minute
+    "signup": (60, 5),    # 5 signups / minute
+    "reset": (60, 10),    # 10 password-reset submissions / minute
+}
+
+
+def rate_limited(bucket, methods=None):
+    """Rate-limit a route per-IP.
+
+    By default only POSTs are counted, so refreshing a GET form is never
+    blocked; pass methods=('GET', 'POST') for read-heavy routes like search.
+    """
+    window, max_requests = RATE_LIMITS.get(bucket, (60, 30))
+    if methods is None:
+        methods = ('POST',)
+
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if request.method not in methods:
+                return f(*args, **kwargs)
+            ip = request.remote_addr or "unknown"
+            key = f"{bucket}:{ip}"
+            now = time.time()
+            hits = [t for t in _rate_limit_hits.get(key, []) if now - t < window]
+            if len(hits) >= max_requests:
+                return jsonify({"status": "error", "message": "Too many requests. Please wait a moment and try again."}), 429
+            hits.append(now)
+            _rate_limit_hits[key] = hits
+            # Opportunistic cleanup to avoid unbounded growth
+            if len(_rate_limit_hits) > 2000:
+                _rate_limit_hits.clear()
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
 
 # Initialize database on startup
 print("=" * 50)
@@ -278,30 +410,22 @@ TMDB_IMG_BASE = "https://image.tmdb.org/t/p"
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/')
 def home():
-    """Netflix-style home page with category shelves."""
-    trending_tv = tmdb_get(
-        "https://api.themoviedb.org/3/trending/tv/week",
-        {"api_key": API_KEY}
-    )
-    trending_movies = tmdb_get(
-        "https://api.themoviedb.org/3/trending/movie/week",
-        {"api_key": API_KEY}
-    )
-    popular_tv = tmdb_get(
-        "https://api.themoviedb.org/3/tv/popular",
-        {"api_key": API_KEY}
-    )
-    top_rated = tmdb_get(
-        "https://api.themoviedb.org/3/tv/top_rated",
-        {"api_key": API_KEY}
-    )
-    popular_movies = tmdb_get(
-        "https://api.themoviedb.org/3/movie/popular",
-        {"api_key": API_KEY}
-    )
+    """Netflix-style home page with category shelves.
 
+    🐛 PERF FIX: all TMDB shelf fetches run in parallel (was 10 sequential
+    calls — up to several minutes when TMDB rate-limits us).
+    """
+    def _fetch(url, params):
+        return tmdb_get(url, params)
+
+    tasks = [
+        ("trending_tv", "https://api.themoviedb.org/3/trending/tv/week", {"api_key": API_KEY}),
+        ("trending_movies", "https://api.themoviedb.org/3/trending/movie/week", {"api_key": API_KEY}),
+        ("popular_tv", "https://api.themoviedb.org/3/tv/popular", {"api_key": API_KEY}),
+        ("top_rated", "https://api.themoviedb.org/3/tv/top_rated", {"api_key": API_KEY}),
+        ("popular_movies", "https://api.themoviedb.org/3/movie/popular", {"api_key": API_KEY}),
+    ]
     # Genre shelves (TV genres)
-    genre_shelves = []
     genre_ids = {
         "Action & Adventure": 10759,
         "Comedy": 35,
@@ -310,25 +434,118 @@ def home():
         "Mystery": 9648,
     }
     for label, genre_id in genre_ids.items():
-        data = tmdb_get(
+        tasks.append((
+            f"genre_{genre_id}",
             "https://api.themoviedb.org/3/discover/tv",
-            {"api_key": API_KEY, "with_genres": genre_id, "sort_by": "popularity.desc", "page": 1}
-        )
+            {"api_key": API_KEY, "with_genres": genre_id, "sort_by": "popularity.desc", "page": 1},
+        ))
+
+    fetched = {}
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        future_map = {pool.submit(_fetch, url, params): name for name, url, params in tasks}
+        for fut in future_map:
+            try:
+                fetched[future_map[fut]] = fut.result()
+            except Exception:
+                fetched[future_map[fut]] = None
+
+    genre_shelves = []
+    for label, genre_id in genre_ids.items():
+        data = fetched.get(f"genre_{genre_id}")
         if data and data.get("results"):
             genre_shelves.append({
                 "label": label,
                 "results": data["results"][:20]
             })
 
+    # Continue Watching shelf — only for logged-in users
+    continue_watching = []
+    if session.get('user_id'):
+        continue_watching = get_continue_watching(session['user_id'])
+
     return render_template(
         'search.html',
-        trending_tv=(trending_tv or {}).get("results", [])[:12],
-        trending_movies=(trending_movies or {}).get("results", [])[:12],
-        popular_tv=(popular_tv or {}).get("results", [])[:12],
-        top_rated=(top_rated or {}).get("results", [])[:12],
-        popular_movies=(popular_movies or {}).get("results", [])[:12],
+        trending_tv=(fetched.get("trending_tv") or {}).get("results", [])[:12],
+        trending_movies=(fetched.get("trending_movies") or {}).get("results", [])[:12],
+        popular_tv=(fetched.get("popular_tv") or {}).get("results", [])[:12],
+        top_rated=(fetched.get("top_rated") or {}).get("results", [])[:12],
+        popular_movies=(fetched.get("popular_movies") or {}).get("results", [])[:12],
         genre_shelves=genre_shelves,
+        continue_watching=continue_watching,
     )
+
+
+def get_continue_watching(user_id, limit=12):
+    """In-progress shows for the Continue Watching shelf (home page).
+
+    Semantics:
+      - Only shows with at least one watched episode (watched_count > 0)
+      - Excluded once COMPLETED (watched >= total) → "removed from Continue
+        Watching" the moment a show hits 100%
+      - Excluded if the user dropped it or only has it on their plan list
+      - Includes the last watched (season, episode) so "Resume" can deep-link
+        straight to the season page where they left off
+    Sorted by most recently watched first. Uses DB-cached totals (updated on
+    every mark operation and by the admin repair tool) — no TMDB calls.
+    """
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        exe(cursor, '''
+            SELECT show_tmdb_id, COUNT(*) FROM watched_episodes
+            WHERE user_id=? AND season_number != 0
+            GROUP BY show_tmdb_id
+        ''', (user_id,))
+        watched_map = dict(cursor.fetchall())
+        if not watched_map:
+            return []
+
+        exe(cursor, '''
+            SELECT tmdb_id, name, poster_path, total_episodes,
+                   COALESCE(user_status, ''), COALESCE(last_watched_at, '')
+            FROM shows WHERE user_id=? AND status != 'Movie'
+        ''', (user_id,))
+        rows = cursor.fetchall()
+
+        # Latest watched (season, episode) per show → resume target.
+        # 🐛 PERF FIX: ONE window-function query instead of N per-show queries.
+        exe(cursor, '''
+            SELECT show_tmdb_id, season_number, episode_number FROM (
+                SELECT show_tmdb_id, season_number, episode_number,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY show_tmdb_id
+                           ORDER BY season_number DESC, episode_number DESC
+                       ) AS rn
+                FROM watched_episodes
+                WHERE user_id=? AND season_number != 0
+            ) WHERE rn = 1
+        ''', (user_id,))
+        resume = {row[0]: {"season": row[1], "episode": row[2]} for row in cursor.fetchall()}
+    finally:
+        conn.close()
+
+    items = []
+    for tmdb_id, name, poster, total, ustatus, last_watched in rows:
+        watched = watched_map.get(tmdb_id, 0)
+        if watched <= 0:
+            continue
+        if ustatus in ('dropped', 'plan_to_watch'):
+            continue
+        # Completed → remove from Continue Watching
+        if total and total > 0 and watched >= total:
+            continue
+        items.append({
+            "tmdb_id": tmdb_id,
+            "name": name,
+            "poster_path": poster,
+            "watched_count": watched,
+            "total_episodes": total or 0,
+            "last_watched_at": last_watched,
+            "resume": resume.get(tmdb_id),
+        })
+
+    items.sort(key=lambda x: x["last_watched_at"], reverse=True)
+    return items[:limit]
 
 
 # ── Health check endpoint (Render friendly) ────────────────────────────
@@ -346,16 +563,28 @@ def health():
         db_status = "ok"
     except Exception as e:
         db_status = str(e)
-    return jsonify({"status": "ok", "database": db_status}), 200
+    uptime_secs = int(time.time() - _START_TIME)
+    return jsonify({
+        "status": "ok",
+        "database": db_status,
+        "uptime_seconds": uptime_secs,
+        "uptime_human": f"{uptime_secs // 3600}h {(uptime_secs % 3600) // 60}m",
+    }), 200
 
 
 # ═══════════════════════════════════════════════════════════════════
 #  AUTH
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/signup', methods=['GET', 'POST'])
+@rate_limited('signup')
 def signup():
     if request.method == 'GET':
         return render_template('signup.html')
+
+    # CSRF: every state-changing POST must carry a valid token
+    if not validate_csrf_token(request.form.get('_csrf_token')):
+        flash("Session expired. Please refresh the page and try again.", "error")
+        return render_template('signup.html', username=request.form.get('username', '').strip())
 
     # POST handling
     username = request.form.get('username', '').strip()
@@ -380,7 +609,7 @@ def signup():
         try:
             cursor = conn.cursor()
             exe(cursor,
-                'INSERT INTO users (username, password_hash) VALUES (?, ?)',
+                'INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)',
                 (username, password_hash))
             conn.commit()
             user_id = lastrowid(cursor)
@@ -401,8 +630,14 @@ def signup():
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@rate_limited('login')
 def login():
     if request.method == 'POST':
+        # CSRF: every state-changing POST must carry a valid token
+        if not validate_csrf_token(request.form.get('_csrf_token')):
+            flash("Session expired. Please refresh the page and try again.", "error")
+            return redirect('/login')
+
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
@@ -443,18 +678,25 @@ def logout():
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  SEARCH
+#  SEARCH  (pagination + rate limited)
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/search')
+@rate_limited('search', methods=('GET', 'POST'))
 def search():
     query = request.args.get('query', '').strip()
     search_type = request.args.get('type', 'tv')
+
+    # Validate + clamp page number (pagination)
+    try:
+        page = max(int(request.args.get('page', 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
 
     if not query:
         return redirect('/')
 
     url = f"https://api.themoviedb.org/3/search/{search_type}"
-    params = {"api_key": API_KEY, "query": query}
+    params = {"api_key": API_KEY, "query": query, "page": page}
     data = tmdb_get(url, params)
 
     if data is None:
@@ -462,22 +704,34 @@ def search():
         return redirect('/')
 
     results = data.get("results", [])
-    return render_template('search_results.html', results=results, search_type=search_type, query=query)
+    total_results = data.get("total_results", len(results))
+    total_pages = data.get("total_pages", page)
+    return render_template(
+        'search_results.html',
+        results=results,
+        search_type=search_type,
+        query=query,
+        page=page,
+        total_results=total_results,
+        has_next=page < total_pages,
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  ADD SHOW / MOVIE
+#  ADD SHOW / MOVIE  (CSRF-safe POST — was GET, which allowed CSRF abuse)
 # ═══════════════════════════════════════════════════════════════════
-@app.route('/add/<int:show_id>')
+@app.route('/add/<int:show_id>', methods=['POST'])
 @login_required
 def add_show(show_id):
+    if not validate_csrf_token(request.form.get('_csrf_token')):
+        return jsonify({"status": "error", "message": "Session expired. Please refresh and try again."}), 403
+
     url = f"https://api.themoviedb.org/3/tv/{show_id}"
     params = {"api_key": API_KEY}
     show = tmdb_get(url, params)
 
     if show is None:
-        flash("Couldn't fetch show details.", "error")
-        return redirect('/')
+        return jsonify({"status": "error", "message": "Couldn't fetch show details."}), 502
 
     try:
         conn = get_conn()
@@ -485,41 +739,49 @@ def add_show(show_id):
             cursor = conn.cursor()
             exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (show["id"], session['user_id']))
             if cursor.fetchone():
-                flash(f"{escape(show['name'])} is already in your shows.", "info")
-            else:
-                # Fetch episode count gracefully — if it fails (timeout, rate limit),
-                # still add the show and let My Shows refresh it later.
-                total_ep = 0
-                try:
-                    total_ep, _ = get_show_episode_count(show["id"])
-                except Exception as ep_err:
-                    logger.error(f"Could not fetch episode count for {show['id']}: {ep_err}")
-                exe(cursor, '''
-                    INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id'], total_ep))
-                conn.commit()
-                flash(f"Added {escape(show['name'])}!", "success")
+                return jsonify({"status": "info", "message": f"{escape(show['name'])} is already in your shows."})
+
+            # Fetch episode count gracefully — if it fails (timeout, rate limit),
+            # still add the show and let My Shows refresh it later.
+            total_ep = 0
+            try:
+                total_ep, _ = get_show_episode_count(show["id"])
+            except Exception as ep_err:
+                logger.error(f"Could not fetch episode count for {show['id']}: {ep_err}")
+
+            # Capture runtime / rating / genres at add time so the stats page
+            # can compute watch time + ratings WITHOUT per-show TMDB calls.
+            runtimes = show.get("episode_run_time") or []
+            runtime = runtimes[0] if runtimes else 0
+            rating = float(show.get("vote_average") or 0)
+            genres = ", ".join(g["name"] for g in (show.get("genres") or []))
+
+            exe(cursor, '''
+                INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, total_episodes, runtime, rating, genres)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (show["id"], show["name"], show["poster_path"], show.get("status", ""), show.get("first_air_date", ""), session['user_id'], total_ep, runtime, rating, genres))
+            conn.commit()
+            return jsonify({"status": "ok", "message": f"Added {escape(show['name'])}!"})
         finally:
             conn.close()
     except Exception as e:
         logger.error(f"ADD SHOW ERROR ({show_id}): {e}")
         logger.error(traceback.format_exc())
-        flash("Could not add show. Please try again.", "error")
-
-    return redirect(request.referrer or '/myshows')
+        return jsonify({"status": "error", "message": "Could not add show. Please try again."}), 500
 
 
-@app.route('/add_movie/<int:movie_id>')
+@app.route('/add_movie/<int:movie_id>', methods=['POST'])
 @login_required
 def add_movie(movie_id):
+    if not validate_csrf_token(request.form.get('_csrf_token')):
+        return jsonify({"status": "error", "message": "Session expired. Please refresh and try again."}), 403
+
     url = f"https://api.themoviedb.org/3/movie/{movie_id}"
     params = {"api_key": API_KEY}
     movie = tmdb_get(url, params)
 
     if movie is None:
-        flash("Couldn't fetch movie details.", "error")
-        return redirect('/')
+        return jsonify({"status": "error", "message": "Couldn't fetch movie details."}), 502
 
     try:
         conn = get_conn()
@@ -527,22 +789,24 @@ def add_movie(movie_id):
             cursor = conn.cursor()
             exe(cursor, 'SELECT tmdb_id FROM shows WHERE tmdb_id=? AND user_id=?', (movie["id"], session['user_id']))
             if cursor.fetchone():
-                flash(f"{escape(movie['title'])} is already in your movies.", "info")
-            else:
-                exe(cursor, '''
-                    INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (movie["id"], movie["title"], movie["poster_path"], "Movie", movie.get("release_date", ""), session['user_id']))
-                conn.commit()
-                flash(f"Added {escape(movie['title'])} to My Movies!", "success")
+                return jsonify({"status": "info", "message": f"{escape(movie['title'])} is already in your movies."})
+
+            runtime = int(movie.get("runtime") or 0)
+            rating = float(movie.get("vote_average") or 0)
+            genres = ", ".join(g["name"] for g in (movie.get("genres") or []))
+
+            exe(cursor, '''
+                INSERT INTO shows (tmdb_id, name, poster_path, status, first_air_date, user_id, runtime, rating, genres)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (movie["id"], movie["title"], movie["poster_path"], "Movie", movie.get("release_date", ""), session['user_id'], runtime, rating, genres))
+            conn.commit()
+            return jsonify({"status": "ok", "message": f"Added {escape(movie['title'])} to My Movies!"})
         finally:
             conn.close()
     except Exception as e:
         logger.error(f"ADD MOVIE ERROR ({movie_id}): {e}")
         logger.error(traceback.format_exc())
-        flash("Could not add movie. Please try again.", "error")
-
-    return redirect(request.referrer or '/mymovies')
+        return jsonify({"status": "error", "message": "Could not add movie. Please try again."}), 500
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -562,32 +826,30 @@ def my_shows():
             ''', (session['user_id'],))
             shows = cursor.fetchall()
 
+            # 🐛 PERF FIX: fetch ALL watched counts in ONE grouped query (was N+1)
+            exe(cursor, '''
+                SELECT show_tmdb_id, COUNT(*) FROM watched_episodes
+                WHERE user_id=? AND season_number != 0
+                GROUP BY show_tmdb_id
+            ''', (session['user_id'],))
+            watched_map = {row[0]: row[1] for row in cursor.fetchall()}
+
             shows_with_progress = []
             for show_row in shows:
                 show_id = show_row[0]
+                watched_count = watched_map.get(show_id, 0)
 
-                exe(cursor, '''
-                    SELECT COUNT(*) FROM watched_episodes 
-                    WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-                ''', (show_id, session['user_id']))
-                watched_count = cursor.fetchone()[0]
-
-                # Fetch show data from TMDB for the rating (1 API call, not per-season)
-                show_data = tmdb_get(
-                    f"https://api.themoviedb.org/3/tv/{show_id}",
-                    {"api_key": API_KEY}
-                )
-                rating = show_data.get("vote_average", 0) if show_data else 0
-
-                # Get cached total_episodes from DB (updated after every mark operation)
-                exe(cursor, 'SELECT total_episodes FROM shows WHERE tmdb_id=? AND user_id=?',
+                # Get cached total_episodes + stored rating from the DB (rating is
+                # captured at add time; totals update after every mark operation).
+                # 🐛 PERF FIX: no per-show TMDB call — the TMDB status is already
+                # stored in the status column, so only ONGOING shows hit TMDB
+                # (and only to refresh their episode totals).
+                exe(cursor, 'SELECT total_episodes, COALESCE(rating,0) FROM shows WHERE tmdb_id=? AND user_id=?',
                     (show_id, session['user_id']))
                 row = cursor.fetchone()
                 total_episodes = row[0] if row else 0
-
-                # For ongoing shows, refresh total from TMDB season endpoints (accurate)
-                # For ended shows, the DB cached value is fine
-                tmdb_status = show_data.get('status') if show_data else None
+                rating = row[1] if row else 0
+                tmdb_status = show_row[3]
                 if total_episodes == 0 or tmdb_status == 'Returning Series':
                     fresh_total, _ = get_show_episode_count(show_id)
                     if fresh_total > 0:
@@ -969,6 +1231,10 @@ def api_season_episodes(show_id, season_number):
         return jsonify({"error": "Database error"}), 500
 
 
+# ── App start time (for health/uptime reporting) ─────────────────────
+_START_TIME = time.time()
+
+
 # ═══════════════════════════════════════════════════════════════════
 #  SEASON DETAIL
 # ═══════════════════════════════════════════════════════════════════
@@ -1083,6 +1349,9 @@ def mark_watched(show_id, season_number, episode_number):
     token = request.form.get('_csrf_token')
     if not validate_csrf_token(token):
         abort(403)
+    # Input validation: seasons/episodes are 1-indexed
+    if season_number <= 0 or episode_number <= 0:
+        abort(400)
 
     user_id = session['user_id']
     auto_caught_up = False
@@ -1308,10 +1577,16 @@ def mark_all_seasons_watched(show_id):
             conn.close()
 
         # 🐛 FIX: Update cached total_episodes after bulk mark
-        _update_cached_total_episodes(show_id, user_id)
+        total = _update_cached_total_episodes(show_id, user_id)
+        if total == 0:
+            total, _ = get_show_episode_count(show_id)
         _update_show_timestamp(show_id, user_id)
 
-        return jsonify({"status": "ok", "marked_count": len(episodes)})
+        return jsonify({
+            "status": "ok",
+            "marked_count": len(episodes),
+            "finished": total > 0,
+        })
     except Exception as e:
         logger.error(f"MARK ALL SEASONS WATCHED ERROR ({show_id}): {e}")
         logger.error(traceback.format_exc())
@@ -1375,34 +1650,31 @@ def history():
             ''', (user_id,))
             watched_movies = cursor.fetchall()
 
-            # All user's shows (TV only, not movies)
+            # All user's shows (TV only, not movies) — include cached totals
             exe(cursor, '''
-                SELECT tmdb_id, name, poster_path, status, first_air_date
+                SELECT tmdb_id, name, poster_path, status, first_air_date, total_episodes
                 FROM shows WHERE user_id=? AND status != 'Movie'
             ''', (user_id,))
             all_shows = cursor.fetchall()
 
-            # Completed shows — reuse the same connection, no N+1
+            # 🐛 PERF FIX: per-show counts + last-watched in ONE grouped query (was N+1)
+            exe(cursor, '''
+                SELECT show_tmdb_id, COUNT(*), MAX(watched_at)
+                FROM watched_episodes
+                WHERE user_id=? AND season_number != 0
+                GROUP BY show_tmdb_id
+            ''', (user_id,))
+            show_stats = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
+
+            # Completed shows — uses DB-cached total_episodes (updated on every
+            # mark operation + admin repair). No TMDB calls per show here.
             completed_shows = []
             for row in all_shows:
                 show_id = row[0]
-                exe(cursor, '''
-                    SELECT COUNT(*) FROM watched_episodes
-                    WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-                ''', (show_id, user_id))
-                watched_count = cursor.fetchone()[0]
-
-                exe(cursor, '''
-                    SELECT watched_at FROM watched_episodes
-                    WHERE show_tmdb_id=? AND user_id=? AND season_number != 0
-                    ORDER BY watched_at DESC LIMIT 1
-                ''', (show_id, user_id))
-                latest_row = cursor.fetchone()
-                completed_at = latest_row[0] if latest_row else None
-
-                total_episodes, _ = get_show_episode_count(show_id)
+                total_episodes = row[5] or 0
+                watched_count, completed_at = show_stats.get(show_id, (0, None))
                 if total_episodes > 0 and watched_count >= total_episodes:
-                    completed_shows.append(row + (completed_at, 0))
+                    completed_shows.append(row[:5] + (completed_at, 0))
 
             completed_shows.sort(key=lambda s: s[5] or "", reverse=True)
 
@@ -1451,13 +1723,25 @@ def history():
 # ═══════════════════════════════════════════════════════════════════
 
 def _is_admin(user_id):
-    """Check if the given user_id is the first registered user (admin)."""
+    """Check if the given user_id is an admin.
+
+    Admins are the usernames listed in the ADMIN_USERNAME env var
+    (comma-separated, case-insensitive). If that var is unset, fall back to
+    the legacy rule: the first registered user is the admin.
+    """
     conn = get_conn()
     try:
         cursor = conn.cursor()
+        exe(cursor, 'SELECT id, username FROM users WHERE id=?', (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        uid, uname = row[0], (row[1] or '').strip().lower()
+        if ADMIN_USERNAMES:
+            return uname in ADMIN_USERNAMES
         exe(cursor, 'SELECT id FROM users ORDER BY id ASC LIMIT 1')
         first_user = cursor.fetchone()
-        return first_user and first_user[0] == user_id
+        return bool(first_user) and first_user[0] == uid
     finally:
         conn.close()
 
@@ -1469,9 +1753,9 @@ def admin_dashboard():
     user_id = session['user_id']
 
     try:
-        # Only the first registered user (you) can see this
+        # Only admins (ADMIN_USERNAME env, or legacy first user) can see this
         if not _is_admin(user_id):
-            flash("Admin access restricted.", "error")
+            flash("Admin access restricted — this account isn't in the admin list.", "error")
             return redirect('/')
 
         conn = get_conn()
@@ -1637,6 +1921,148 @@ def admin_repair_episodes():
 
 
 # ═══════════════════════════════════════════════════════════════════
+#  PASSWORD RESET (admin-driven — no email service required)
+# ═══════════════════════════════════════════════════════════════════
+RESET_TOKEN_TTL_SECONDS = 24 * 3600  # reset links are valid for 24 hours
+
+
+def _hash_reset_token(token):
+    """Store tokens as SHA-256 hashes so a DB leak doesn't expose live links."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+@app.route('/admin/reset_password', methods=['POST'])
+@login_required
+def admin_reset_password():
+    """Admin-only recovery tool: generate a one-time reset link for a user,
+    or set a temporary password directly. No email service needed — the
+    admin shares the link/password with the user."""
+    if not _is_admin(session['user_id']):
+        return jsonify({"status": "error", "message": "Admin access restricted."}), 403
+    if not validate_csrf_token(request.form.get('_csrf_token')):
+        return jsonify({"status": "error", "message": "Invalid CSRF token."}), 403
+
+    username = request.form.get('username', '').strip()
+    action = request.form.get('action', '')
+    if not username:
+        return jsonify({"status": "error", "message": "Username is required."}), 400
+
+    try:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            exe(cursor, 'SELECT id FROM users WHERE username=?', (username,))
+            user = cursor.fetchone()
+            if not user:
+                return jsonify({"status": "error", "message": f"User '{escape(username)}' not found."}), 404
+            uid = user[0]
+
+            if action == 'link':
+                # One-time reset link, valid 24h; store only the token hash
+                token = secrets.token_urlsafe(32)
+                expires_utc = time.strftime(
+                    '%Y-%m-%d %H:%M:%S',
+                    time.gmtime(time.time() + RESET_TOKEN_TTL_SECONDS)
+                )
+                exe(cursor, '''
+                    UPDATE users SET password_reset_token=?, password_reset_expires=?
+                    WHERE id=?
+                ''', (_hash_reset_token(token), expires_utc, uid))
+                conn.commit()
+                reset_link = url_for('reset_password_page', token=token, _external=True)
+                return jsonify({
+                    "status": "ok",
+                    "message": f"Reset link generated for {escape(username)} (valid 24h).",
+                    "reset_link": reset_link,
+                })
+
+            if action == 'password':
+                new_password = request.form.get('password', '')
+                if len(new_password) < 6:
+                    return jsonify({"status": "error", "message": "Temporary password must be at least 6 characters."}), 400
+                exe(cursor, '''
+                    UPDATE users SET password_hash=?, password_reset_token=NULL, password_reset_expires=NULL
+                    WHERE id=?
+                ''', (generate_password_hash(new_password), uid))
+                conn.commit()
+                return jsonify({"status": "ok", "message": f"Password for {escape(username)} has been reset."})
+
+            return jsonify({"status": "error", "message": "Invalid action."}), 400
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"ADMIN RESET ERROR: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({"status": "error", "message": "Could not reset password."}), 500
+
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'])
+@rate_limited('reset')
+def reset_password_page(token):
+    """One-time password reset page reached via the admin-generated link.
+    The token is single-use and expires after 24 hours."""
+    token_hash = _hash_reset_token(token)
+    try:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            # datetime('now') is UTC — matches the UTC expiry we stored
+            exe(cursor, '''SELECT id FROM users
+                           WHERE password_reset_token=? AND password_reset_expires IS NOT NULL
+                             AND password_reset_expires > datetime('now')''', (token_hash,))
+            row = cursor.fetchone()
+            valid = row is not None
+            user_id = row[0] if row else None
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"RESET LOOKUP ERROR: {e}")
+        logger.error(traceback.format_exc())
+        return render_template('reset_password.html', valid=False, token='')
+
+    if request.method == 'GET':
+        return render_template('reset_password.html', valid=valid, token=token if valid else '')
+
+    # POST: set the new password
+    if not valid:
+        flash("This reset link is invalid or has expired. Ask an admin for a new one.", "error")
+        return redirect('/login')
+    if not validate_csrf_token(request.form.get('_csrf_token')):
+        flash("Session expired. Please refresh the page and try again.", "error")
+        return render_template('reset_password.html', valid=True, token=token)
+
+    new_password = request.form.get('password', '')
+    confirm = request.form.get('password_confirm', '')
+    if len(new_password) < 6:
+        flash("Password must be at least 6 characters.", "error")
+        return render_template('reset_password.html', valid=True, token=token)
+    if new_password != confirm:
+        flash("Passwords do not match.", "error")
+        return render_template('reset_password.html', valid=True, token=token)
+
+    try:
+        conn = get_conn()
+        try:
+            cursor = conn.cursor()
+            # Single-use: clear the token so it cannot be replayed
+            exe(cursor, '''
+                UPDATE users SET password_hash=?, password_reset_token=NULL, password_reset_expires=NULL
+                WHERE id=?
+            ''', (generate_password_hash(new_password), user_id))
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"RESET UPDATE ERROR: {e}")
+        logger.error(traceback.format_exc())
+        flash("Could not update your password. Please try again.", "error")
+        return render_template('reset_password.html', valid=True, token=token)
+
+    flash("Password updated! Log in with your new password.", "success")
+    return redirect('/login')
+
+
+# ═══════════════════════════════════════════════════════════════════
 #  UPCOMING EPISODES CALENDAR
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/upcoming')
@@ -1668,11 +2094,24 @@ def upcoming():
     upcoming_list = []
     newly_aired = []  # episodes that recently aired (next_ep with past date)
 
-    for tmdb_id, name, poster_path in shows:
-        show_data = tmdb_get(
+    # 🐛 PERF FIX: fetch all tracked shows' data in parallel (was N sequential calls)
+    def _fetch_show(tmdb_id):
+        return tmdb_get(
             f"https://api.themoviedb.org/3/tv/{tmdb_id}",
             {"api_key": API_KEY}
         )
+
+    shows_data = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        future_map = {pool.submit(_fetch_show, tmdb_id): tmdb_id for tmdb_id, _n, _p in shows}
+        for fut in future_map:
+            try:
+                shows_data[future_map[fut]] = fut.result()
+            except Exception:
+                shows_data[future_map[fut]] = None
+
+    for tmdb_id, name, poster_path in shows:
+        show_data = shows_data.get(tmdb_id)
         if not show_data:
             continue
 
@@ -1709,128 +2148,240 @@ def upcoming():
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  STATS DASHBOARD
+#  STATS / PROFILE DASHBOARD  (Part 2: redesigned, accurate metrics)
 # ═══════════════════════════════════════════════════════════════════
 @app.route('/stats')
 @login_required
 def stats_dashboard():
-    """Personal viewing stats dashboard."""
+    """Personal profile & statistics dashboard.
+
+    Every metric is computed from stored data (no guessing):
+      - Episodes/Movies watched: exact row counts
+      - Series completed: watched >= cached total_episodes (updated on every
+        mark operation and by the admin repair tool)
+      - Watch time: per-title runtime captured at add time; falls back to
+        22 min/episode and 120 min/movie for legacy rows without runtime
+      - Ratings/genres: TMDB values captured at add time
+      - Streaks / heatmap / monthly activity: from watched_at timestamps
+    """
     user_id = session['user_id']
+    today = time.strftime('%Y-%m-%d')
 
     try:
         conn = get_conn()
         try:
             cursor = conn.cursor()
 
-            # ── Basic counts ──
+            # ── Exact counts ──
             exe(cursor, 'SELECT COUNT(*) FROM watched_episodes WHERE user_id=? AND season_number != 0', (user_id,))
             total_episodes = cursor.fetchone()[0]
-
             exe(cursor, 'SELECT COUNT(*) FROM watched_movies WHERE user_id=?', (user_id,))
             total_movies = cursor.fetchone()[0]
-
-            # ── Shows with activity ──
             exe(cursor, '''SELECT COUNT(DISTINCT show_tmdb_id) FROM watched_episodes
                            WHERE user_id=? AND season_number != 0''', (user_id,))
             shows_with_activity = cursor.fetchone()[0]
 
-            # 🐛 FIX: Removed redundant COUNT query - total_tv_shows already set from the loop above
+            # ── Per-show watched counts + last watched (one grouped query) ──
+            exe(cursor, '''SELECT show_tmdb_id, COUNT(*), MAX(watched_at) FROM watched_episodes
+                           WHERE user_id=? AND season_number != 0 GROUP BY show_tmdb_id''', (user_id,))
+            show_stats = {r[0]: (r[1], r[2]) for r in cursor.fetchall()}
 
-            # ── Completed shows (for completion rate) ──
-            # 🐛 FIX: We need to compare against fresh TMDB totals, not cached total_episodes
-            # which may be stale. We compute completion rate from watched/total per show.
-            exe(cursor, '''SELECT s.tmdb_id
-                           FROM shows s
-                           WHERE s.user_id=? AND s.status != 'Movie'
-                        ''', (user_id,))
-            all_shows_for_completion = cursor.fetchall()
-            completed_count = 0
-            total_with_data = 0
-            for (tmdb_id,) in all_shows_for_completion:
-                exe(cursor, '''SELECT COUNT(*) FROM watched_episodes we
-                               WHERE we.show_tmdb_id=? AND we.user_id=? AND we.season_number != 0''',
-                    (tmdb_id, user_id))
-                wc = cursor.fetchone()[0]
-                # Get fresh total from TMDB season endpoints
-                fresh_total, _ = get_show_episode_count(tmdb_id)
-                if fresh_total > 0:
-                    total_with_data += 1
-                    if wc >= fresh_total:
-                        completed_count += 1
-            completed_shows = completed_count
-            total_tv_shows = total_with_data  # 🐛 FIX: set from accurate TMDB data, not stale cache
-            # Note: total_tv_shows_for_rate was intentionally removed — total_tv_shows above is the accurate count.
-
-            # ── Monthly activity (last 12 months) ──
-            exe(cursor, '''
-                SELECT strftime('%Y-%m', watched_at) as month, COUNT(*) as cnt
-                FROM watched_episodes
-                WHERE user_id=? AND watched_at >= date('now', '-12 months') AND season_number != 0
-                GROUP BY month
-                ORDER BY month ASC
-            ''', (user_id,))
-            monthly_rows = cursor.fetchall()
-
-            # ── User's shows with genres ──
-            exe(cursor, '''
-                SELECT tmdb_id, name FROM shows
-                WHERE user_id=? AND status != 'Movie'
-            ''', (user_id,))
+            # ── User's tracked shows (TV) with stored metadata ──
+            exe(cursor, '''SELECT tmdb_id, total_episodes, runtime, rating, genres
+                           FROM shows WHERE user_id=? AND status != 'Movie' ''', (user_id,))
             user_shows = cursor.fetchall()
 
+            # ── Watched movies with stored metadata ──
+            exe(cursor, '''SELECT wm.movie_tmdb_id, COALESCE(s.name,'Unknown'),
+                                  COALESCE(s.runtime,0), COALESCE(s.rating,0),
+                                  COALESCE(s.genres,'')
+                           FROM watched_movies wm
+                           LEFT JOIN shows s ON wm.movie_tmdb_id = s.tmdb_id AND wm.user_id = s.user_id
+                           WHERE wm.user_id=?''', (user_id,))
+            watched_movies = cursor.fetchall()
+
+            # ── Monthly activity (episodes + movies, last 12 months) ──
+            monthly = {}
+            exe(cursor, '''SELECT strftime('%Y-%m', watched_at), COUNT(*) FROM watched_episodes
+                           WHERE user_id=? AND watched_at >= date('now','-12 months') AND season_number != 0
+                           GROUP BY 1''', (user_id,))
+            for m, c in cursor.fetchall():
+                monthly[m] = c
+            exe(cursor, '''SELECT strftime('%Y-%m', watched_at), COUNT(*) FROM watched_movies
+                           WHERE user_id=? AND watched_at >= date('now','-12 months')
+                           GROUP BY 1''', (user_id,))
+            for m, c in cursor.fetchall():
+                monthly[m] = monthly.get(m, 0) + c
+
+            # ── Member since ──
+            exe(cursor, 'SELECT created_at FROM users WHERE id=?', (user_id,))
+            created_row = cursor.fetchone()
+            created_at = (created_row[0] if created_row else None) or ''
+
+            # ── All activity dates (streaks + heatmap) ──
+            ep_dates = []
+            mv_dates = []
+            exe(cursor, '''SELECT date(watched_at) FROM watched_episodes
+                           WHERE user_id=? AND season_number != 0 AND watched_at IS NOT NULL''', (user_id,))
+            for (d,) in cursor.fetchall():
+                if d:
+                    ep_dates.append(d)
+            exe(cursor, '''SELECT date(watched_at) FROM watched_movies
+                           WHERE user_id=? AND watched_at IS NOT NULL''', (user_id,))
+            for (d,) in cursor.fetchall():
+                if d:
+                    mv_dates.append(d)
         finally:
             conn.close()
-
     except Exception as e:
         logger.error(f"STATS DB ERROR: {e}")
         logger.error(traceback.format_exc())
         flash("Could not load stats.", "error")
         return redirect('/myshows')
 
-    # ── Convert monthly rows to dicts for Jinja ──
-    monthly_episodes = []
-    month_max = 0
-    for month, count in monthly_rows:
-        monthly_episodes.append({"month": month, "count": count})
-        if count > month_max:
-            month_max = count
-    monthly_episodes_max = month_max or 1
+    # ── Series completed (vs cached totals — consistent with My Shows) ──
+    completed_count = 0
+    total_tv_shows = 0
+    for tmdb_id, total_ep, runtime, rating, genres in user_shows:
+        if (total_ep or 0) > 0:
+            total_tv_shows += 1
+            if show_stats.get(tmdb_id, (0, None))[0] >= total_ep:
+                completed_count += 1
+    completion_rate = round((completed_count / total_tv_shows) * 100) if total_tv_shows > 0 else 0
 
-    # ── Fetch genres from TMDB for each show (cached) ──
+    # ── Watch time (accurate per-title runtime when known) ──
+    total_minutes = 0
+    for tmdb_id, total_ep, runtime, rating, genres in user_shows:
+        watched = show_stats.get(tmdb_id, (0, None))[0]
+        if watched > 0:
+            total_minutes += watched * (runtime or 22)
+    for _movie_id, _name, mrun, _mrating, _mgenres in watched_movies:
+        total_minutes += (mrun or 120)
+    total_hours = round(total_minutes / 60)
+
+    # ── Ratings (of WATCHED items, stored vote_average) ──
+    rated_items = []
+    for tmdb_id, total_ep, runtime, rating, genres in user_shows:
+        if show_stats.get(tmdb_id, (0, None))[0] > 0 and (rating or 0) > 0:
+            rated_items.append(float(rating))
+    for _movie_id, _name, mrun, mrating, _mgenres in watched_movies:
+        if (mrating or 0) > 0:
+            rated_items.append(float(mrating))
+    avg_rating = round(sum(rated_items) / len(rated_items), 1) if rated_items else 0
+    rating_buckets = [
+        {"label": "8-10", "count": sum(1 for r in rated_items if 8 <= r <= 10)},
+        {"label": "6-8",  "count": sum(1 for r in rated_items if 6 <= r < 8)},
+        {"label": "4-6",  "count": sum(1 for r in rated_items if 4 <= r < 6)},
+        {"label": "2-4",  "count": sum(1 for r in rated_items if 2 <= r < 4)},
+        {"label": "0-2",  "count": sum(1 for r in rated_items if 0 < r < 2)},
+    ]
+
+    # ── Genres (of watched content, stored at add time) ──
     genre_counter = {}
-    for tmdb_id, name in user_shows:
-        show_data = tmdb_get(
-            f"https://api.themoviedb.org/3/tv/{tmdb_id}",
-            {"api_key": API_KEY}
-        )
-        if show_data and show_data.get("genres"):
-            for g in show_data["genres"]:
-                gname = g["name"]
-                genre_counter[gname] = genre_counter.get(gname, 0) + 1
-
+    for tmdb_id, total_ep, runtime, rating, genres in user_shows:
+        if show_stats.get(tmdb_id, (0, None))[0] > 0 and genres:
+            for g in genres.split(','):
+                g = g.strip()
+                if g:
+                    genre_counter[g] = genre_counter.get(g, 0) + 1
+    for _movie_id, _name, mrun, _mrating, mgenres in watched_movies:
+        if mgenres:
+            for g in mgenres.split(','):
+                g = g.strip()
+                if g:
+                    genre_counter[g] = genre_counter.get(g, 0) + 1
     genre_data = sorted(genre_counter.items(), key=lambda x: x[1], reverse=True)[:10]
     max_genre = genre_data[0][1] if genre_data else 1
 
-    # ── Completion rate ──
-    completion_rate = round((completed_shows / total_tv_shows) * 100) if total_tv_shows > 0 else 0
+    # ── Monthly activity chart ──
+    monthly_episodes = [{"month": m, "count": c} for m, c in sorted(monthly.items())]
+    monthly_episodes_max = max((m["count"] for m in monthly_episodes), default=1) or 1
 
-    # ── Total hours (estimate: 22 min per TV episode, 120 min per movie) ──
-    total_minutes = (total_episodes * 22) + (total_movies * 120)
-    total_hours = round(total_minutes / 60)
+    # ── Streaks ──
+    activity_dates = sorted(set(ep_dates + mv_dates))
+    date_set = set(activity_dates)
+
+    def _add_days(d, n):
+        return (_date.fromisoformat(d) + _timedelta(days=n)).isoformat()
+
+    current_streak = 0
+    d = today
+    if d not in date_set:
+        d = _add_days(today, -1)
+    while d in date_set:
+        current_streak += 1
+        d = _add_days(d, -1)
+
+    longest_streak = 0
+    run = 0
+    prev = None
+    for d in activity_dates:
+        run = run + 1 if (prev is not None and _add_days(prev, 1) == d) else 1
+        longest_streak = max(longest_streak, run)
+        prev = d
+
+    # ── Best day ──
+    day_counts = {}
+    for d in ep_dates + mv_dates:
+        day_counts[d] = day_counts.get(d, 0) + 1
+    best_day = max(day_counts.items(), key=lambda x: x[1]) if day_counts else (None, 0)
+
+    # ── Heatmap (last 52 weeks x 7 days, ending today) ──
+    heatmap_weeks = []
+    week = []
+    start = _add_days(today, -363)
+    for i in range(364):
+        d = _add_days(start, i)
+        week.append({"date": d, "count": day_counts.get(d, 0)})
+        if len(week) == 7:
+            heatmap_weeks.append(week)
+            week = []
+
+    # ── Milestones ──
+    milestones = []
+    if ep_dates:
+        milestones.append({"icon": "🎬", "text": f"First episode watched on {min(ep_dates)}"})
+    if mv_dates:
+        milestones.append({"icon": "🍿", "text": f"First movie watched on {min(mv_dates)}"})
+    if completed_count > 0:
+        milestones.append({"icon": "🏆", "text": f"Completed {completed_count} series"})
+    if longest_streak >= 2:
+        milestones.append({"icon": "🔥", "text": f"Longest streak: {longest_streak} days"})
+    if best_day[0]:
+        milestones.append({"icon": "📈", "text": f"Most active day: {best_day[0]} ({best_day[1]} watched)"})
+    for n in (100, 250, 500, 1000, 5000):
+        if total_episodes >= n:
+            milestones.append({"icon": "💯", "text": f"Watched {n} episodes"})
+    if total_hours >= 50:
+        milestones.append({"icon": "⏱", "text": f"Watched {total_hours} hours of content"})
+
+    # Member since: prefer users.created_at, fall back to first activity
+    member_since = created_at[:10] if created_at else (activity_dates[0] if activity_dates else "")
 
     return render_template(
         'stats.html',
+        username=session.get('username', 'User'),
+        member_since=member_since,
         total_episodes=total_episodes,
         total_movies=total_movies,
         total_hours=total_hours,
         total_tv_shows=total_tv_shows,
+        completed_shows=completed_count,
         completion_rate=completion_rate,
+        shows_with_activity=shows_with_activity,
+        avg_rating=avg_rating,
+        rating_buckets=rating_buckets,
         genre_data=genre_data,
         max_genre=max_genre,
         monthly_episodes=monthly_episodes,
         monthly_episodes_max=monthly_episodes_max,
-        shows_with_activity=shows_with_activity,
+        current_streak=current_streak,
+        longest_streak=longest_streak,
+        best_day=best_day,
+        heatmap_weeks=heatmap_weeks,
+        milestones=milestones,
     )
+
 
 
 if __name__ == "__main__":

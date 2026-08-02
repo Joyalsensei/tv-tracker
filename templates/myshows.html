@@ -11,7 +11,7 @@
     }
     .remove-link {
         display: block; width: 100%;
-        padding: 8px 12px; font-size: 13px; font-weight: 600;
+        padding: 12px; font-size: 13px; font-weight: 600;
         color: #e74c3c;
         background: rgba(231,76,60,.08);
         border: 1px solid rgba(231,76,60,.25);
@@ -69,7 +69,7 @@
             </div>
         </div>
         <div class="card-remove-area">
-            <form method="POST" action="/remove/{{ show[0] }}" onsubmit="return confirm('Remove this show?')">
+            <form method="POST" action="/remove/{{ show[0] }}" onsubmit="return TVTracker.confirmAction('Remove this show?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="remove-link">✕ Remove</button>
             </form>
@@ -111,7 +111,7 @@
             </div>
         </div>
         <div class="card-remove-area">
-            <form method="POST" action="/remove/{{ show[0] }}" onsubmit="return confirm('Remove this show?')">
+            <form method="POST" action="/remove/{{ show[0] }}" onsubmit="return TVTracker.confirmAction('Remove this show?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="remove-link">✕ Remove</button>
             </form>

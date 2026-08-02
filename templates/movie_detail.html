@@ -22,7 +22,7 @@
     .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; align-items: center; }
     .watch-btn {
         display: inline-flex; align-items: center; gap: 8px;
-        padding: 10px 20px; background: var(--accent-green); color: white;
+        min-height: 44px; padding: 0 20px; background: var(--accent-green); color: white;
         border: none; border-radius: var(--radius); cursor: pointer; font-size: 14px; font-weight: 600;
         transition: all var(--transition);
     }
@@ -56,7 +56,7 @@
 
         <div class="rating-section">
             <span class="rating-number">{{ "%.1f"|format(rating|float) }}</span>
-            <span class="rating-stars">
+            <span class="rating-stars" aria-hidden="true">
                 {% set stars = (rating|float)|round(0, 'floor')|int %}
                 {% for i in range(10) %}
                     {% if i < stars %}★{% else %}☆{% endif %}
@@ -64,7 +64,7 @@
             </span>
             <span style="font-size:13px;color:var(--text-dim);">({{ vote_count }} votes)</span>
         </div>
-        <div class="rating-bar-bg">
+        <div class="rating-bar-bg" aria-hidden="true">
             <div class="rating-bar-fill" style="width: {{ (rating|float / 10) * 100 }}%;"></div>
         </div>
 
@@ -95,10 +95,10 @@
         {% endif %}
 
         <div class="actions">
-            <button class="watch-btn{% if is_watched %} watched{% endif %}" id="watchBtn" onclick="toggleWatch({{ movie.id }})">
+            <button class="watch-btn{% if is_watched %} watched{% endif %}" id="watchBtn" aria-pressed="{% if is_watched %}true{% else %}false{% endif %}" onclick="toggleWatch({{ movie.id }})">
                 {% if is_watched %}✓ Watched{% else %}✓ Mark as Watched{% endif %}
             </button>
-            <a href="/add_movie/{{ movie.id }}"><button class="btn btn-primary btn-sm">+ Add to My Movies</button></a>
+            <button type="button" class="btn btn-primary btn-sm" data-add-url="/add_movie/{{ movie.id }}" data-added-text="✓ Added">+ Add to My Movies</button>
         </div>
     </div>
 </div>
@@ -147,21 +147,33 @@
 
 <script>
 function toggleWatch(movieId) {
-    const formData = new FormData();
-    formData.append('_csrf_token', '{{ csrf_token() }}');
-    fetch('/watch_movie/' + movieId, {method: 'POST', body: formData})
+    const btn = document.getElementById('watchBtn');
+    // Optimistic update: flip immediately, revert on failure (no flicker).
+    const wasWatched = btn.classList.contains('watched');
+    const applyState = (watched) => {
+        btn.classList.toggle('watched', watched);
+        btn.setAttribute('aria-pressed', watched ? 'true' : 'false');
+        btn.textContent = watched ? '✓ Watched' : '✓ Mark as Watched';
+    };
+    applyState(!wasWatched);
+
+    TVTracker.csrfPost('/watch_movie/' + movieId)
         .then(res => res.json())
         .then(data => {
-            const btn = document.getElementById('watchBtn');
             if (data.status === 'watched') {
-                btn.textContent = '✓ Watched';
-                btn.classList.add('watched');
-                showToast('Movie marked as watched!', 'success');
+                applyState(true);
+                // UX parity with series completion: confetti + success toast
+                TVTracker.celebrate('🎉 Movie watched!', 'Added to your watched history.');
+            } else if (data.status === 'unwatched') {
+                applyState(false);
             } else {
-                btn.textContent = '✓ Mark as Watched';
-                btn.classList.remove('watched');
+                applyState(wasWatched);
+                TVTracker.showToast(data.message || 'Could not update.', 'error');
             }
-        }).catch(err => console.error('Error:', err));
+        }).catch(err => {
+            applyState(wasWatched);
+            console.error('Error:', err);
+        });
 }
 </script>
 {% endblock %}

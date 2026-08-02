@@ -1,17 +1,18 @@
 {% extends "base.html" %}
 {% block title %}My Movies - TV Tracker{% endblock %}
 {% block head_extra %}    <style>
+    /* WCAG 2.5.8 / user mandate: 44px touch target */
     .watch-btn-card {
         display: block;
         width: calc(100% - 8px);
         margin: 6px auto 0;
-        padding: 6px 0;
+        padding: 12px 0;
         background: var(--bg-elevated);
         color: var(--text);
         border: 1px solid var(--border-light);
         border-radius: 6px;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 13px;
         transition: all var(--transition);
     }
     .watch-btn-card.watched {
@@ -20,6 +21,7 @@
         color: white;
     }
     .watch-btn-card:hover { filter: brightness(1.15); }
+    .watch-btn-card:disabled { opacity: .6; cursor: not-allowed; }
 
     /* ── Remove button — moved BELOW the card body, away from poster ── */
     .card-remove-area {
@@ -27,7 +29,7 @@
     }
     .remove-link {
         display: block; width: 100%;
-        padding: 8px 12px; font-size: 13px; font-weight: 600;
+        padding: 12px; font-size: 13px; font-weight: 600;
         color: #e74c3c;
         background: rgba(231,76,60,.08);
         border: 1px solid rgba(231,76,60,.25);
@@ -70,12 +72,15 @@
             <div class="card-meta">
                 <span class="card-rating">★ {{ "%.1f"|format(movie[6]|float) if movie[6] else "N/A" }}</span>
             </div>
-            <button class="watch-btn-card{% if movie[5] %} watched{% endif %}" onclick="toggleWatch({{ movie[0] }})" id="watch-btn-{{ movie[0] }}">
+            <button type="button" class="watch-btn-card{% if movie[5] %} watched{% endif %}"
+                    aria-pressed="{% if movie[5] %}true{% else %}false{% endif %}"
+                    aria-label="{{ movie[1] }}: {% if movie[5] %}watched{% else %}not watched{% endif %}"
+                    onclick="toggleWatch({{ movie[0] }}, this)" id="watch-btn-{{ movie[0] }}">
                 {% if movie[5] %}✓ Watched{% else %}Mark as Watched{% endif %}
             </button>
         </div>
         <div class="card-remove-area">
-            <form method="POST" action="/remove/{{ movie[0] }}" onsubmit="return confirm('Remove this movie?')">
+            <form method="POST" action="/remove/{{ movie[0] }}" onsubmit="return TVTracker.confirmAction('Remove this movie?')">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="remove-link">✕ Remove</button>
             </form>
@@ -93,22 +98,34 @@
 {% endif %}
 
 <script>
-function toggleWatch(movieId) {
-    const formData = new FormData();
-    formData.append('_csrf_token', '{{ csrf_token() }}');
-    fetch('/watch_movie/' + movieId, {method: 'POST', body: formData})
+function toggleWatch(movieId, btn) {
+    // Optimistic update: flip immediately, revert on failure.
+    const wasWatched = btn.classList.contains('watched');
+    const applyState = (watched) => {
+        btn.classList.toggle('watched', watched);
+        btn.setAttribute('aria-pressed', watched ? 'true' : 'false');
+        btn.textContent = watched ? '✓ Watched' : 'Mark as Watched';
+    };
+    applyState(!wasWatched);
+
+    TVTracker.csrfPost('/watch_movie/' + movieId)
         .then(res => res.json())
         .then(data => {
-            const btn = document.getElementById('watch-btn-' + movieId);
             if (data.status === 'watched') {
-                btn.textContent = '✓ Watched';
-                btn.classList.add('watched');
+                applyState(true);
+                TVTracker.showToast('Movie marked as watched!', 'success');
+            } else if (data.status === 'unwatched') {
+                applyState(false);
+                TVTracker.showToast('Marked as unwatched.', 'info');
             } else {
-                btn.textContent = 'Mark as Watched';
-                btn.classList.remove('watched');
+                applyState(wasWatched);
+                TVTracker.showToast(data.message || 'Could not update.', 'error');
             }
         })
-        .catch(err => console.error('Error toggling watch status:', err));
+        .catch(err => {
+            applyState(wasWatched);
+            console.error('Error toggling watch status:', err);
+        });
 }
 </script>
 {% endblock %}

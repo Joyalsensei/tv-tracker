@@ -27,6 +27,10 @@
     .hero h1 { font-size: 48px; font-weight: 800; margin-bottom: 8px; }
     .hero .tagline { color: var(--text-secondary); font-size: 17px; margin-bottom: 28px; }
 
+    /* Continue Watching shelf card */
+    .cw-card { position: relative; }
+    .cw-card .cw-progress-text { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+
     @media (max-width: 768px) {
         .hero { margin: -16px -16px 0; padding: 20px 16px 40px; min-height: 50vh; }
         .hero h1 { font-size: 32px; }
@@ -43,8 +47,10 @@
         <h1>🎬 TV Tracker</h1>
         <p class="tagline">Track what you watch. Never lose your place.</p>
         <form action="/search" method="get" class="search-form" autocomplete="off" style="max-width:500px;margin:0 auto;">
-            <input type="text" name="query" placeholder="Search for a show or movie..." autocomplete="off">
-            <select name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
+            <label for="home-search" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Search for a show or movie</label>
+            <input type="text" id="home-search" name="query" placeholder="Search for a show or movie..." autocomplete="off">
+            <label for="home-search-type" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Search type</label>
+            <select id="home-search-type" name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
                 <option value="tv">TV Show</option>
                 <option value="movie">Movie</option>
             </select>
@@ -58,13 +64,47 @@
         <h1>🎬 TV Tracker</h1>
         <p class="tagline">Track what you watch. Never lose your place.</p>
         <form action="/search" method="get" class="search-form" autocomplete="off" style="max-width:500px;margin:0 auto;">
-            <input type="text" name="query" placeholder="Search for a show or movie..." autocomplete="off">
-            <select name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
+            <label for="home-search" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Search for a show or movie</label>
+            <input type="text" id="home-search" name="query" placeholder="Search for a show or movie..." autocomplete="off">
+            <label for="home-search-type" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">Search type</label>
+            <select id="home-search-type" name="type" style="border:none;background:transparent;color:var(--text);padding:8px 4px;font-size:13px;">
                 <option value="tv">TV Show</option>
                 <option value="movie">Movie</option>
             </select>
             <button type="submit">🔍 Search</button>
         </form>
+    </div>
+</div>
+{% endif %}
+
+{# ── Continue Watching — only for logged-in users, only in-progress items ── #}
+{% if continue_watching %}
+<div class="shelf">
+    <div class="shelf-header">
+        <h2>▶️ Continue Watching</h2>
+        <a href="/myshows" style="font-size:13px;color:#66d9ef;">See all →</a>
+    </div>
+    <div class="shelf-scroll">
+        {% for cw in continue_watching %}
+        <div class="shelf-card-wrapper" style="position:relative;flex:0 0 auto;width:140px;scroll-snap-align:start;">
+            <a href="/show/{{ cw.tmdb_id }}" class="shelf-card">
+                {% if cw.poster_path %}
+                <img src="https://image.tmdb.org/t/p/w342{{ cw.poster_path }}" alt="{{ cw.name }}" loading="lazy">
+                {% else %}
+                <div style="width:100%;aspect-ratio:2/3;background:var(--bg-elevated);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);">No Poster</div>
+                {% endif %}
+                <div class="shelf-info">
+                    <div class="shelf-title">{{ cw.name }}</div>
+                    <div class="cw-progress-text">{{ cw.watched_count }}/{{ cw.total_episodes }} episodes{% if cw.resume %} • up to S{{ cw.resume.season }}E{{ cw.resume.episode }}{% endif %}</div>
+                </div>
+            </a>
+            {% if cw.resume %}
+            <a href="/show/{{ cw.tmdb_id }}/season/{{ cw.resume.season }}" class="cw-resume">▶ Resume</a>
+            {% else %}
+            <a href="/show/{{ cw.tmdb_id }}" class="cw-resume">▶ Continue</a>
+            {% endif %}
+        </div>
+        {% endfor %}
     </div>
 </div>
 {% endif %}
@@ -95,10 +135,10 @@
                     </div>
                 </div>
             </a>
-            <!-- Add button overlay on shelf cards -->
-            <a href="/{{ 'add_movie' if is_movie else 'add' }}/{{ item.id }}" class="card-overlay" style="border-radius:var(--radius) var(--radius) 0 0;">
+            <!-- Add button: CSRF-safe POST via shared JS handler -->
+            <button type="button" class="card-overlay" data-add-url="/{{ 'add_movie' if is_movie else 'add' }}/{{ item.id }}" data-added-text="✓ Added" aria-label="Add {{ item.name or item.title }} to my list">
                 <span>+ Add</span>
-            </a>
+            </button>
         </div>
         {% endfor %}
     </div>

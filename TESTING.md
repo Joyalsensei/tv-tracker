@@ -141,6 +141,104 @@ For ongoing shows, the total is refreshed from TMDB season endpoints on every
 
 ---
 
+## New Features & Security Changes (August 2026)
+
+### Continue Watching (home page)
+
+In-progress shows appear on the home page shelf for logged-in users with a
+**Resume** button that deep-links to the season they last watched. Items are
+removed from the shelf the moment they reach 100%.
+
+**Manual test checklist:**
+1. Watch a few episodes of a show, then go to `/` — the show appears in
+   "▶️ Continue Watching" with correct `x/y episodes` text and a Resume button.
+2. Click Resume — it opens the season page of the last watched episode.
+3. Mark the show 100% complete — it disappears from Continue Watching.
+4. Dropped / Plan-to-Watch shows never appear on the shelf.
+
+### Movies & Series completion parity
+
+Marking a movie watched now shows the same confetti + success banner as
+finishing a series. All watch toggles (episodes, movies) update the UI
+**optimistically** and roll back on failure — no flicker, no full page reload.
+
+**Manual test checklist:**
+1. On a movie detail page, click "Mark as Watched" — button flips instantly,
+   confetti + "🎉 Movie watched!" banner appear.
+2. Mark the final episode of a series — confetti fires from any page
+   (season page OR show detail inline tracker).
+3. Turn off the network, click a toggle — it flips then reverts on error.
+4. "Mark All Watched" on a show updates checkmarks + banner in place (no reload).
+
+### Profile & Stats redesign (`/stats`)
+
+New sections: profile header (avatar, member since), Milestones, Activity
+Heatmap (52 weeks), Monthly Activity, Top Genres, Ratings Distribution.
+Metrics are computed from stored data (watch time uses per-title runtime
+captured at add time; falls back to 22 min/episode, 120 min/movie).
+
+**Manual test checklist:**
+1. Stats page loads with no TMDB calls (works offline — data is stored).
+2. Episodes Watched / Movies Watched match the database counts.
+3. Heatmap cells appear for days with activity; hover shows the count.
+4. Streaks: watch something today and tomorrow — Current Streak increments.
+
+### 🚨 Breaking change: `/add/<id>` and `/add_movie/<id>` are now POST-only
+
+**Why:** These were state-changing GET routes, which allowed cross-site
+request forgery (a malicious page could add items to a logged-in user's
+list). They now require POST + CSRF token and return JSON.
+
+**Impact:** Old direct links/bookmarks to `/add/1396` now return **405**.
+All in-app add buttons were updated to POST. If you see a 405, the UI is
+using an outdated link — file a bug, don't add the route back as GET.
+
+### Password Reset (admin-driven, no email service)
+
+Recovery for forgotten passwords without any email provider. The admin
+(first user) opens the **Password Reset** box on `/admin`, enters a
+username, and either:
+
+- **Generate Reset Link** — a one-time link valid 24h (token stored as a
+  SHA-256 hash; shared with the user however convenient), or
+- **Set Temporary Password** — the admin sets one directly.
+
+**Manual test checklist:**
+1. As admin: open `/admin` → Password Reset → enter a username → Generate
+   Reset Link. A URL appears — open it in an incognito window.
+2. The page shows "Set a New Password"; set a new password, log in with it.
+3. Reuse the same link — it must show "Link Invalid" (single-use).
+4. Set Temporary Password path: password must be ≥ 6 chars; the user can
+   log in immediately with it.
+5. Non-admin users hitting `/admin/reset_password` get 403.
+6. Expired links (wait 24h or backdate `password_reset_expires`) show
+   "Link Invalid".
+
+### Configurable admin (`ADMIN_USERNAME` env var)
+
+`/admin` is restricted to a configurable admin list, not just the first
+registered user:
+
+- Set `ADMIN_USERNAME=user1,user2` (comma-separated, case-insensitive) in
+  `.env` to choose who can open `/admin`. **No code change needed. Restart
+  the app after editing.**
+- If `ADMIN_USERNAME` is **unset**, the legacy rule applies: the first
+  registered user is the admin.
+
+**Manual test checklist:**
+1. With `ADMIN_USERNAME` set to your username, log in as that user → `/admin` opens.
+2. Log in as a user NOT in the list → `/admin` redirects home with a clear
+   "Admin access restricted" message.
+3. Unset the var (or leave it out) → the first registered user is admin again.
+
+### Rate limiting & resilience
+
+- `/search`, `/login`, `/signup` are rate-limited per IP (in-memory).
+- TMDB circuit breaker: after 3 consecutive failures, TMDB calls fast-fail
+  for 60s so pages render instantly from cached/DB data while offline.
+- Login/Signup now validate CSRF tokens server-side.
+- Friendly 400/403/500 pages instead of plain-text errors.
+
 ## Full Regression Test Checklist
 
 Run this after ANY change to search, episode tracking, or progress logic.

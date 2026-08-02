@@ -4,7 +4,7 @@
 <style>
     .mark-season-btn {
         background: var(--accent-green); color: white;
-        padding: 8px 20px; margin-bottom: 20px; font-weight: 600;
+        padding: 12px 20px; margin-bottom: 20px; font-weight: 600;
         border: none; border-radius: var(--radius); cursor: pointer;
         transition: all var(--transition);
     }
@@ -29,8 +29,9 @@
         text-overflow: ellipsis;
         padding-right: 12px;
     }
+    /* WCAG 2.5.8 / user mandate: 44x44 touch target, real <button> */
     .watch-toggle {
-        width: 32px; height: 32px;
+        width: 44px; height: 44px;
         border-radius: 50%;
         background: var(--bg-elevated);
         border: 2px solid #666;
@@ -40,7 +41,7 @@
         cursor: pointer;
         transition: all .25s ease;
         flex-shrink: 0;
-        font-size: 14px;
+        font-size: 16px;
         color: transparent;
     }
     .watch-toggle.watched {
@@ -48,39 +49,10 @@
         border-color: var(--accent-green);
         color: white;
     }
-    .watch-toggle:hover { border-color: #aaa; transform: scale(1.1); }
+    .watch-toggle:hover { border-color: #aaa; transform: scale(1.05); }
     .watch-toggle.watched:hover { background: #e74c3c; border-color: #e74c3c; }
+    .watch-toggle:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
     .ep-number { color: var(--text-dim); font-size: 12px; margin-right: 10px; min-width: 40px; }
-
-    .confetti-container {
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        pointer-events: none; z-index: 9999; overflow: hidden;
-    }
-    .confetti-piece {
-        position: absolute; width: 10px; height: 10px; top: -10px;
-        animation: confettiFall var(--fall-duration, 3s) ease-in forwards;
-    }
-    @keyframes confettiFall {
-        0% { transform: translateY(0) rotate(0deg) scale(1); opacity: 1; }
-        100% { transform: translateY(100vh) rotate(720deg) scale(.5); opacity: 0; }
-    }
-    .finished-banner {
-        display: none;
-        position: fixed; top: 50%; left: 50%;
-        transform: translate(-50%, -50%);
-        background: linear-gradient(135deg, var(--accent-green), #27ae60);
-        color: white; padding: 32px 48px;
-        border-radius: 16px; font-size: 28px; font-weight: 700;
-        text-align: center; z-index: 10000;
-        box-shadow: 0 20px 60px rgba(0,0,0,.5);
-        animation: bannerPop .5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    }
-    .finished-banner.show { display: block; }
-    .finished-banner .sub { font-size: 16px; font-weight: 400; margin-top: 8px; opacity: .9; }
-    @keyframes bannerPop {
-        0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
-        100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
-    }
 </style>
 {% endblock %}
 {% block content %}
@@ -103,65 +75,71 @@
     <li class="episode-row">
         <span class="ep-number">Ep {{ episode.episode_number }}</span>
         <span class="ep-name">{{ episode.name }}</span>
-        <span class="watch-toggle{% if episode.episode_number in watched_episodes %} watched{% endif %}"
-              data-show="{{ show_id }}"
-              data-season="{{ season.season_number }}"
-              data-episode="{{ episode.episode_number }}"
-              onclick="markWatched(this)">
+        <button type="button"
+                class="watch-toggle{% if episode.episode_number in watched_episodes %} watched{% endif %}"
+                aria-pressed="{% if episode.episode_number in watched_episodes %}true{% else %}false{% endif %}"
+                aria-label="Episode {{ episode.episode_number }}: {{ episode.name }} — {% if episode.episode_number in watched_episodes %}watched{% else %}not watched{% endif %}"
+                data-show="{{ show_id }}"
+                data-season="{{ season.season_number }}"
+                data-episode="{{ episode.episode_number }}"
+                onclick="markWatched(this)">
             ✓
-        </span>
+        </button>
     </li>
 {% endfor %}
 </ul>
-
-<div class="confetti-container" id="confettiContainer"></div>
-<div class="finished-banner" id="finishedBanner">
-    🎉 Show finished! 🎉
-    <div class="sub">You've watched every episode. Great job!</div>
-</div>
 
 <script>
 function markWatched(el) {
     const show = el.dataset.show;
     const season = parseInt(el.dataset.season);
     const episode = parseInt(el.dataset.episode);
-    const formData = new FormData();
-    formData.append('_csrf_token', '{{ csrf_token() }}');
-    fetch(`/watch/${show}/${season}/${episode}`, {method: 'POST', body: formData})
+    // Optimistic update: flip the UI immediately, revert if the server fails.
+    const wasWatched = el.classList.contains('watched');
+    const applyState = (watched) => {
+        el.classList.toggle('watched', watched);
+        el.setAttribute('aria-pressed', watched ? 'true' : 'false');
+        el.textContent = watched ? '✓' : '✓';
+    };
+    applyState(!wasWatched); // optimistic
+
+    TVTracker.csrfPost('/watch/' + show + '/' + season + '/' + episode)
         .then(res => res.json())
         .then(data => {
             if (data.status === "watched") {
-                el.classList.add('watched'); el.textContent = '✓';
+                applyState(true);
                 if (data.auto_caught_up) {
-                    showToast('✅ Auto-marked ' + data.auto_marked_count + ' prior episode(s)!', 'success');
+                    TVTracker.showToast('✅ Auto-marked ' + data.auto_marked_count + ' prior episode(s)!', 'success');
                 }
+                if (data.finished) {
+                    TVTracker.celebrate('🎉 Show finished!', "You've watched every episode. Great job!");
+                }
+            } else if (data.status === "unwatched") {
+                applyState(false);
             } else {
-                el.classList.remove('watched'); el.textContent = '';
+                applyState(wasWatched); // server rejected — roll back
+                TVTracker.showToast(data.message || 'Could not update.', 'error');
             }
-            if (data.finished) triggerConfetti();
+        })
+        .catch(() => {
+            applyState(wasWatched); // network error — roll back
+            TVTracker.showToast('Could not update. Please try again.', 'error');
         });
 }
 
 function markWholeSeasonWatched(show, season, totalEpisodes) {
-    if (confirm(`Mark all ${totalEpisodes} episodes as watched?`)) {
-        const formData = new FormData();
-        formData.append('_csrf_token', '{{ csrf_token() }}');
-        fetch(`/mark_season_watched/${show}/${season}/${totalEpisodes}`, {method: 'POST', body: formData})
-            .then(r => r.json()).then(d => { if (d.status === 'ok') location.reload(); });
+    if (TVTracker.confirmAction('Mark all ' + totalEpisodes + ' episodes as watched?')) {
+        TVTracker.csrfPost('/mark_season_watched/' + show + '/' + season + '/' + totalEpisodes)
+            .then(r => r.json())
+            .then(d => {
+                if (d.status === 'ok') {
+                    TVTracker.showToast('Season marked as watched!', 'success');
+                    location.reload();
+                } else {
+                    TVTracker.showToast(d.message || 'Could not mark season.', 'error');
+                }
+            });
     }
-}
-
-function triggerConfetti() {
-    const container = document.getElementById('confettiContainer');
-    const colors = ['#e50914','#f5c518','#2ecc71','#3498db','#e74c3c','#9b59b6','#f39c12','#1abc9c'];
-    for (let i = 0; i < 80; i++) {
-        const piece = document.createElement('div');
-        piece.className = 'confetti-piece';
-        piece.style.cssText = `left:${Math.random()*100}%;width:${Math.random()*8+6}px;height:${Math.random()*8+6}px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>.5?'50%':'2px'};animation-delay:${Math.random()*2}s;--fall-duration:${Math.random()*2+2}s`;
-        container.appendChild(piece);
-    }
-    document.getElementById('finishedBanner').classList.add('show');
-    setTimeout(() => { container.innerHTML = ''; document.getElementById('finishedBanner').classList.remove('show'); }, 5000);
 }
 </script>
 {% endblock %}

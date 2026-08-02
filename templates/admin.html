@@ -106,6 +106,32 @@
     <div id="repair-results" style="margin-top:12px;max-height:300px;overflow-y:auto;font-size:12px;"></div>
 </div>
 
+<div class="maintenance-box" style="margin-top:16px;">
+    <h3 style="font-size:15px;margin-bottom:8px;">🔑 Password Reset</h3>
+    <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">
+        Recover a forgotten password without email: generate a <strong>one-time reset link</strong>
+        (share it with the user, valid 24h) or <strong>set a temporary password</strong> directly.
+    </p>
+    <input type="text" id="reset-username" placeholder="Username" list="reset-users" autocomplete="off"
+           style="margin-bottom:10px;width:100%;max-width:340px;">
+    <datalist id="reset-users">
+        {% for user in recent_users %}<option value="{{ user[1] }}">{% endfor %}
+    </datalist>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="btn-reset-link" onclick="resetPassword('link')" class="btn btn-secondary btn-sm">🔗 Generate Reset Link</button>
+        <button id="btn-reset-pw" onclick="resetPassword('password')" class="btn btn-secondary btn-sm">🔑 Set Temporary Password</button>
+    </div>
+    <input type="password" id="reset-password" placeholder="Temporary password (min 6 chars) — only used for 'Set'"
+           autocomplete="new-password" style="margin-top:10px;width:100%;max-width:340px;">
+    <div id="reset-status" style="margin-top:12px;font-size:13px;color:var(--text-dim);"></div>
+    <div id="reset-link-box" style="margin-top:10px;display:none;">
+        <label for="reset-link-output" style="font-size:12px;color:var(--text-secondary);">
+            Reset link (copy &amp; share with the user):
+        </label>
+        <input type="text" id="reset-link-output" readonly style="margin-top:4px;width:100%;max-width:520px;">
+    </div>
+</div>
+
 <p style="color:var(--text-dim);font-size:12px;margin-top:40px;text-align:center;">
     Only the first registered user (you) can see this page.
 </p>
@@ -152,6 +178,37 @@ function escapeHtml(text) {
     var div = document.createElement('div');
     div.appendChild(document.createTextNode(text || ''));
     return div.innerHTML;
+}
+
+function resetPassword(action) {
+    const username = document.getElementById('reset-username').value.trim();
+    const status = document.getElementById('reset-status');
+    if (!username) { status.textContent = 'Enter a username first.'; return; }
+    const formData = new FormData();
+    formData.append('_csrf_token', '{{ csrf_token() }}');
+    formData.append('username', username);
+    formData.append('action', action);
+    if (action === 'password') {
+        const pw = document.getElementById('reset-password').value;
+        if (pw.length < 6) { status.textContent = 'Temporary password must be at least 6 characters.'; return; }
+        formData.append('password', pw);
+    }
+    fetch('/admin/reset_password', {method: 'POST', body: formData})
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                status.innerHTML = '<strong style="color:var(--accent-green);">✅ ' + escapeHtml(data.message) + '</strong>';
+                const box = document.getElementById('reset-link-box');
+                if (data.reset_link) {
+                    document.getElementById('reset-link-output').value = data.reset_link;
+                    box.style.display = 'block';
+                } else {
+                    box.style.display = 'none';
+                }
+            } else {
+                status.innerHTML = '<strong style="color:#e74c3c;">Error:</strong> ' + escapeHtml(data.message);
+            }
+        }).catch(err => { status.textContent = 'Error: ' + err.message; });
 }
 </script>
 {% endblock %}
