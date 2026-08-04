@@ -2,9 +2,11 @@
 Episode Count Repair Script - Run after deploying bug fix
 Usage: python repair_episode_counts.py
 """
+import io
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 env_path = Path(__file__).parent / '.env'
 if env_path.exists():
