@@ -247,10 +247,16 @@ function markAllSeasonsWatched(showId) {
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
-                TVTracker.showToast('✅ Marked ' + data.marked_count + ' episodes as watched!', 'success');
+                // 🐛 FIX: if some seasons couldn't be fetched (TMDB hiccup),
+                // tell the user instead of silently claiming everything was marked.
+                if (data.incomplete) {
+                    TVTracker.showToast('⚠️ Marked ' + data.marked_count + ' episodes, but ' + data.failed_seasons.length + ' season(s) couldn\'t be loaded. Click again to retry.', 'error');
+                } else {
+                    TVTracker.showToast('✅ Marked ' + data.marked_count + ' episodes as watched!', 'success');
+                }
                 // No page reload — update season checkmarks + finish banner in place (no flicker)
                 refreshSeasonCheckmarks(showId);
-                if (data.finished) {
+                if (data.finished && !data.incomplete) {
                     TVTracker.celebrate('🎉 Show finished!', "You've watched every episode. Great job!");
                 }
             } else {
@@ -354,6 +360,13 @@ function refreshSeasonCheckmarks(showId) {
                 if (!checkEl) return;
                 const total = seasonTotals[String(seasonNum)] || seasonTotals[seasonNum] || 0;
                 const watched = (watchedData.season_counts[seasonNum] || 0);
+                // 🐛 FIX: show the ACCURATE season total from the SEASON endpoint
+                // instead of the show endpoint's stale episode_count, which is
+                // often wrong for long-running shows (e.g. One Piece).
+                const epCountEl = row.querySelector('.season-ep-count');
+                if (epCountEl && total > 0) {
+                    epCountEl.textContent = total;
+                }
                 if (total > 0 && watched >= total) {
                     checkEl.className = 'season-check watched-all';
                     checkEl.title = 'All ' + total + ' episodes watched';

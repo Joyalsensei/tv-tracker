@@ -352,6 +352,13 @@ def get_show_episode_count(show_id):
     endpoint always returns the actual episode list.
 
     Season data is cached for 1 hour to avoid excessive API calls.
+
+    🐛 SAFETY FIX: the total is only ever returned when EVERY aired
+    season loaded successfully. If a season fetch fails (timeout,
+    429, circuit breaker), we return (0, None) instead of a partial
+    sum — otherwise callers would overwrite the cached total_episodes
+    with a wrong number, which made long shows' progress bars and
+    totals jump around.
     """
     data = tmdb_get(
         f"https://api.themoviedb.org/3/tv/{show_id}",
@@ -362,10 +369,20 @@ def get_show_episode_count(show_id):
 
     total = 0
     for s in data.get("seasons", []):
-        if s["season_number"] <= 0:
+        sn = s["season_number"]
+        if sn <= 0:
             continue
-        count = get_season_episode_count(show_id, s["season_number"])
-        total += count
+        # 🐛 NOTE: do NOT trust the show endpoint's per-season episode_count
+        # (it is stale for long-running shows — the exact bug this codebase
+        # worked around). Always count from the season endpoint.
+        season_data = tmdb_get(
+            f"https://api.themoviedb.org/3/tv/{show_id}/season/{sn}",
+            {"api_key": API_KEY},
+            ttl=SEASON_CACHE_TTL,
+        )
+        if season_data is None:
+            return 0, None  # incomplete sum — refuse to trust it
+        total += len(season_data.get("episodes", []))
 
     return total, data
 
@@ -383,22 +400,53 @@ def get_season_episode_data(show_id, season_number):
     return [{"episode_number": e["episode_number"], "name": e.get("name", f"Episode {e['episode_number']}")} for e in data["episodes"]]
 
 
+def _get_season_episode_tuples(show_id, season_number, user_id):
+    """Fetch a season's episode list directly from TMDB for bulk marking.
+
+    Returns (episode_tuples, fetch_failed):
+      - episode_tuples: [(show_id, season_number, episode_number, user_id), ...]
+      - fetch_failed: True when the TMDB fetch FAILED (timeout / 429 /
+        circuit breaker). A season that simply has no episodes yet returns
+        ([], False) — the two cases MUST NOT be conflated, or failed seasons
+        would be silently skipped by the bulk-mark actions on long shows.
+    """
+    data = tmdb_get(
+        f"https://api.themoviedb.org/3/tv/{show_id}/season/{season_number}",
+        {"api_key": API_KEY},
+    )
+    if data is None:
+        return [], True
+    return [(show_id, season_number, ep["episode_number"], user_id) for ep in data.get("episodes", [])], False
+
+
 def _update_cached_total_episodes(show_id, user_id):
     """Update the cached total_episodes in the shows table for a given show+user.
     Called after any bulk mark operation so progress bar stays accurate.
     Returns the total, or 0 if TMDB couldn't be reached.
+
+    🐛 SAFETY FIX: the cached total is only ever updated with a COMPLETE,
+    verified total (get_show_episode_count refuses partial sums) and never
+    shrunk below the number of episodes the user has already marked — so
+    the "total episodes" number stays stable for long shows instead of
+    flip-flopping when a TMDB fetch is slow or partially fails.
     """
     total, _ = get_show_episode_count(show_id)
-    if total > 0:
-        conn = get_conn()
-        try:
-            cursor = conn.cursor()
-            exe(cursor, 'UPDATE shows SET total_episodes=? WHERE tmdb_id=? AND user_id=?', (total, show_id, user_id))
+    if total <= 0:
+        return 0
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        exe(cursor, '''SELECT COUNT(*) FROM watched_episodes
+                       WHERE show_tmdb_id=? AND user_id=? AND season_number != 0''',
+            (show_id, user_id))
+        watched_count = cursor.fetchone()[0]
+        if total >= watched_count:
+            exe(cursor, 'UPDATE shows SET total_episodes=? WHERE tmdb_id=? AND user_id=?',
+                (total, show_id, user_id))
             conn.commit()
-        finally:
-            conn.close()
         return total
-    return 0
+    finally:
+        conn.close()
 
 
 # ── Helper: build poster / backdrop URLs ────────────────────────────
@@ -1336,15 +1384,18 @@ def mark_watched(show_id, season_number, episode_number):
     """
     Toggle a single episode watched/unwatched.
 
-    🔄 AUTO-CATCH-UP: When the LAST episode of a season is marked as watched,
-    this endpoint automatically marks:
-      - All EARLIER episodes in the SAME season (1..N-1) as watched
-      - All episodes in ALL PRIOR seasons as watched
+    🔄 AUTO-CATCH-UP: "watched up to episode N" semantics. Marking episode N
+    means every episode BEFORE it was watched, so this endpoint automatically
+    marks:
+      - All EARLIER episodes in the SAME season (1..N-1)
+      - All episodes in ALL PRIOR seasons
 
-    This ensures that "if I've watched the finale, I must have watched
-    everything before it" — without requiring the frontend to chain
-    multiple API calls. Both the season_detail page and the show_detail
-    inline tracker benefit from this server-side logic.
+    The backfill is idempotent (INSERT OR IGNORE) and prior seasons are only
+    re-synced when they aren't provably complete already, so long shows don't
+    re-fetch ~20 seasons on every click. If a TMDB fetch fails mid-catch-up,
+    auto_caught_up is reported as False so the UI never claims a false
+    "Caught up!". Both the season_detail page and the show_detail inline
+    tracker benefit from this server-side logic.
     """
     token = request.form.get('_csrf_token')
     if not validate_csrf_token(token):
@@ -1378,37 +1429,76 @@ def mark_watched(show_id, season_number, episode_number):
                 ''', (show_id, season_number, episode_number, user_id))
                 status = "watched"
 
-                # ── Auto-catch-up: if this is the last episode of the season ──
+                # ── Auto-catch-up: "watched up to episode N" semantics ──
+                # Marking episode N means every episode BEFORE it was watched:
+                #   1. All earlier episodes in THIS season (1..N-1) — no TMDB needed.
+                #   2. All episodes in ALL PRIOR seasons — so hopping into a later
+                #      season backfills the history correctly.
+                # 🐛 FIX: the old code only backfilled when the LAST episode of a
+                # season was marked, so marking a mid-season episode left earlier
+                # episodes permanently unwatched. It also silently skipped prior
+                # seasons whenever a TMDB fetch failed mid-loop (very likely for
+                # long shows: after 3 failures the circuit breaker makes the
+                # remaining ~20 season fetches return nothing), yet still showed
+                # a false "Caught up!" toast. Now the backfill always runs, prior
+                # seasons are skipped only when provably already complete, and
+                # auto_caught_up is only reported when every prior aired season
+                # was actually synced.
                 total_in_season = get_season_episode_count(show_id, season_number)
-                if episode_number == total_in_season and total_in_season > 0 and season_number > 0:
-                    # 1. Mark all earlier episodes in THIS season (1..episode_number-1)
+                # 🐛 SAFETY: don't backfill an out-of-range episode number when the
+                # season's true length is known (guards against cascading phantom
+                # rows from a direct request like /watch/<id>/1/9999). When TMDB
+                # is unreachable (0) we still backfill best-effort so marking stays
+                # useful during outages.
+                if total_in_season == 0 or episode_number <= total_in_season:
                     earlier = [(show_id, season_number, ep, user_id) for ep in range(1, episode_number)]
                     if earlier:
                         exemany(cursor, '''
                             INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
                             VALUES (?, ?, ?, ?)
                         ''', earlier)
-                        auto_marked_count += len(earlier)
+                        auto_marked_count += max(cursor.rowcount, 0)
 
-                    # 2. Mark all episodes in ALL prior seasons
-                    show_data = tmdb_get(
-                        f"https://api.themoviedb.org/3/tv/{show_id}",
-                        {"api_key": API_KEY}
-                    )
-                    if show_data:
-                        for season in show_data.get("seasons", []):
-                            sn = season["season_number"]
-                            if sn > 0 and sn < season_number:
-                                season_eps = get_season_episode_data(show_id, sn)
-                                prior_episodes = [(show_id, sn, ep["episode_number"], user_id) for ep in season_eps]
-                                if prior_episodes:
-                                    exemany(cursor, '''
-                                        INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
-                                        VALUES (?, ?, ?, ?)
-                                    ''', prior_episodes)
-                                    auto_marked_count += len(prior_episodes)
+                show_data = tmdb_get(
+                    f"https://api.themoviedb.org/3/tv/{show_id}",
+                    {"api_key": API_KEY}
+                )
+                prior_seasons_ok = True
+                prior_new_count = 0
+                if show_data:
+                    # All prior seasons (sn < current). NOTE: don't filter on the
+                    # show endpoint's episode_count — it's stale for long-running
+                    # shows, and a season below the current one is aired anyway.
+                    # No "prev season complete => all complete" shortcut: a
+                    # partially-failed catch-up could leave an EARLIER season with
+                    # gaps while the immediately-previous one is complete, and a
+                    # shortcut would skip fixing it forever. Re-syncing is cheap
+                    # (cached TMDB data + INSERT OR IGNORE) and self-healing.
+                    for season in show_data.get("seasons", []):
+                        sn = season["season_number"]
+                        if not (0 < sn < season_number):
+                            continue
+                        # Reuse the shared helper: distinguishes a FAILED fetch
+                        # (report honestly) from a season with no episodes yet.
+                        prior_episodes, fetch_failed = _get_season_episode_tuples(show_id, sn, user_id)
+                        if fetch_failed:
+                            # Fetch failed (timeout / 429 / circuit breaker).
+                            # Never silently skip: report that catch-up was NOT
+                            # complete so the UI can tell the truth.
+                            prior_seasons_ok = False
+                            continue
+                        if prior_episodes:
+                            exemany(cursor, '''
+                                INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
+                                VALUES (?, ?, ?, ?)
+                            ''', prior_episodes)
+                            inserted = max(cursor.rowcount, 0)
+                            prior_new_count += inserted
+                            auto_marked_count += inserted
 
-                    if auto_marked_count > 0:
+                    # Only claim "caught up" when every prior season was synced
+                    # AND at least one new row was actually added this request.
+                    if prior_seasons_ok and prior_new_count > 0:
                         auto_caught_up = True
 
             conn.commit()
@@ -1508,29 +1598,46 @@ def mark_previous_seasons(show_id, season_number):
         try:
             cursor = conn.cursor()
             episodes = []
+            failed_seasons = []
             for season in show_data.get("seasons", []):
                 sn = season["season_number"]
-                if sn > 0 and sn < season_number:
-                    # 🐛 FIX: Get actual episode data from the season endpoint
-                    # instead of relying on episode_count from show endpoint,
-                    # which can be inaccurate for ongoing shows.
-                    season_episodes = get_season_episode_data(show_id, sn)
-                    for ep in season_episodes:
-                        episodes.append((show_id, sn, ep["episode_number"], user_id))
+                if not (0 < sn < season_number):
+                    continue
+                # 🐛 FIX: fetch the season directly so a FAILED fetch is
+                # distinguishable from a season with no episodes yet. The old
+                # code silently skipped failed seasons — very likely for long
+                # shows, where the circuit breaker trips mid-loop and the
+                # remaining season fetches all return nothing.
+                tuples, fetch_failed = _get_season_episode_tuples(show_id, sn, user_id)
+                if fetch_failed:
+                    failed_seasons.append(sn)
+                    continue
+                episodes.extend(tuples)
+            marked_count = 0
             if episodes:
                 exemany(cursor, '''
                     INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
                     VALUES (?, ?, ?, ?)
                 ''', episodes)
+                marked_count = max(cursor.rowcount, 0)
             conn.commit()
         finally:
             conn.close()
+
+        if failed_seasons:
+            logger.warning(f"MARK PREVIOUS SEASONS incomplete ({show_id}): seasons {failed_seasons} could not be fetched")
 
         # 🐛 FIX: Update cached total_episodes after bulk mark
         _update_cached_total_episodes(show_id, user_id)
         _update_show_timestamp(show_id, user_id)
 
-        return jsonify({"status": "ok", "marked_previous_seasons_up_to": season_number - 1, "marked_count": len(episodes)})
+        return jsonify({
+            "status": "ok",
+            "marked_previous_seasons_up_to": season_number - 1,
+            "marked_count": marked_count,
+            "failed_seasons": failed_seasons,
+            "incomplete": bool(failed_seasons),
+        })
     except Exception as e:
         logger.error(f"MARK PREVIOUS SEASONS ERROR ({show_id}/{season_number}): {e}")
         logger.error(traceback.format_exc())
@@ -1560,21 +1667,35 @@ def mark_all_seasons_watched(show_id):
         try:
             cursor = conn.cursor()
             episodes = []
+            failed_seasons = []
             for season in show_data.get("seasons", []):
                 sn = season["season_number"]
-                if sn > 0:
-                    # 🐛 FIX: Use actual episode data from the season endpoint
-                    season_episodes = get_season_episode_data(show_id, sn)
-                    for ep in season_episodes:
-                        episodes.append((show_id, sn, ep["episode_number"], user_id))
+                if sn <= 0:
+                    continue
+                # 🐛 FIX: fetch the season directly so a FAILED fetch is
+                # distinguishable from a season with no episodes yet (e.g. an
+                # upcoming season). The old code silently skipped failed
+                # seasons — very likely for long shows, where the circuit
+                # breaker trips mid-loop and the remaining fetches return
+                # nothing, leaving the user with a false "all marked".
+                tuples, fetch_failed = _get_season_episode_tuples(show_id, sn, user_id)
+                if fetch_failed:
+                    failed_seasons.append(sn)
+                    continue
+                episodes.extend(tuples)
+            marked_count = 0
             if episodes:
                 exemany(cursor, '''
                     INSERT OR IGNORE INTO watched_episodes (show_tmdb_id, season_number, episode_number, user_id)
                     VALUES (?, ?, ?, ?)
                 ''', episodes)
+                marked_count = max(cursor.rowcount, 0)
             conn.commit()
         finally:
             conn.close()
+
+        if failed_seasons:
+            logger.warning(f"MARK ALL SEASONS WATCHED incomplete ({show_id}): seasons {failed_seasons} could not be fetched")
 
         # 🐛 FIX: Update cached total_episodes after bulk mark
         total = _update_cached_total_episodes(show_id, user_id)
@@ -1584,8 +1705,11 @@ def mark_all_seasons_watched(show_id):
 
         return jsonify({
             "status": "ok",
-            "marked_count": len(episodes),
-            "finished": total > 0,
+            "marked_count": marked_count,
+            "failed_seasons": failed_seasons,
+            "incomplete": bool(failed_seasons),
+            # Don't claim the show is finished if some seasons couldn't sync.
+            "finished": total > 0 and not failed_seasons,
         })
     except Exception as e:
         logger.error(f"MARK ALL SEASONS WATCHED ERROR ({show_id}): {e}")

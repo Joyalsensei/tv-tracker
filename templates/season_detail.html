@@ -120,11 +120,33 @@ function markWatched(el) {
                 applyState(wasWatched); // server rejected — roll back
                 TVTracker.showToast(data.message || 'Could not update.', 'error');
             }
+            // 🐛 FIX: the server's auto-catch-up may have marked OTHER episodes
+            // (earlier in this season, or entire previous seasons). Refresh the
+            // whole list so the true watched state is shown instead of leaving
+            // auto-marked episodes looking unwatched until a page reload.
+            refreshSeasonList(show, season);
         })
         .catch(() => {
             applyState(wasWatched); // network error — roll back
             TVTracker.showToast('Could not update. Please try again.', 'error');
         });
+}
+
+// Re-fetch watched status for this season and update every toggle button.
+function refreshSeasonList(show, season) {
+    fetch('/api/show/' + show + '/season/' + season)
+        .then(res => res.json())
+        .then(data => {
+            if (!data || !data.episodes) return;
+            const watched = new Set(data.episodes.filter(ep => ep.watched).map(ep => ep.episode_number));
+            document.querySelectorAll('.watch-toggle').forEach(function (btn) {
+                const ep = parseInt(btn.dataset.episode);
+                const isWatched = watched.has(ep);
+                btn.classList.toggle('watched', isWatched);
+                btn.setAttribute('aria-pressed', isWatched ? 'true' : 'false');
+            });
+        })
+        .catch(() => { /* keep optimistic state — harmless */ });
 }
 
 function markWholeSeasonWatched(show, season, totalEpisodes) {
